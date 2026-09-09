@@ -67,6 +67,8 @@ function safeSubmissionName(original) {
 
 function compactAssessment(a = {}) {
   return {
+    academicYear: String(a.academicYear || "").slice(0, 7),
+    version: Math.min(99, Math.max(1, Number.parseInt(a.version, 10) || 1)),
     unitCode: String(a.unitCode || "").slice(0, 80),
     unitName: String(a.unitName || "").slice(0, 180),
     assessmentName: String(a.assessmentName || "").slice(0, 180),

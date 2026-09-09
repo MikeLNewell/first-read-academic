@@ -209,3 +209,34 @@ textarea { resize: vertical; line-height: 1.5; }
   .result-section, .criterion-card { break-inside: avoid; box-shadow: none; }
   textarea, input { border: 0; padding: 0; resize: none; overflow: visible; }
 }
+
+/* v2 annual assessment library */
+.selector-stack { display: grid; gap: 10px; }
+.selector-stack label, .library-filters label { display: grid; gap: 6px; }
+.selector-stack label > span, .library-filters label > span { color: var(--muted); font-size: .69rem; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
+.database-banner { margin-bottom: 14px; padding: 16px 18px; background: #fff3d8; border-color: #ead39f; color: #685127; font-size: .82rem; line-height: 1.55; }
+.migration-banner { margin-bottom: 14px; padding: 14px 16px; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.migration-banner p { margin: 0; color: var(--muted); font-size: .8rem; }
+.library-toolbar { justify-content: space-between; align-items: flex-end; flex-wrap: wrap; }
+.library-filters, .library-actions { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
+.library-filters select { min-width: 180px; }
+.profile-library { display: grid; gap: 26px; }
+.year-group { display: grid; gap: 12px; }
+.year-heading { display: flex; justify-content: space-between; align-items: end; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.year-heading h3 { margin: 0; font-size: 1.65rem; letter-spacing: -.04em; }
+.year-heading > span { color: var(--muted); font-size: .75rem; }
+.profile-grid-inner { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 13px; }
+.profile-card.archived { opacity: .68; background: #f4f2ec; }
+.card-kickers { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.version-chip { font-size: .67rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 7px; background: #f6f4ed; }
+.card-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+.checkbox-row { grid-template-columns: auto 1fr !important; align-items: center; gap: 9px !important; padding: 11px 0; }
+.checkbox-row input { width: 18px; height: 18px; padding: 0; margin: 0; }
+.checkbox-row span { color: var(--ink); font-size: .8rem; }
+
+@media (max-width: 680px) {
+  .library-toolbar, .migration-banner { align-items: stretch; flex-direction: column; }
+  .library-filters, .library-actions { display: grid; grid-template-columns: 1fr; }
+  .library-filters select { min-width: 0; }
+  .year-heading { align-items: flex-start; }
+}

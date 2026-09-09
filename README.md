@@ -1,76 +1,195 @@
-# First Read
+# First Read v2
 
-A secure-by-design MVP for lecturer-in-the-loop, AI-assisted initial review of student submissions against a lecturer-supplied assessment brief and marking criteria.
+First Read is a lecturer-in-the-loop, AI-assisted initial review workspace for checking student submissions against the correct assessment brief and marking criteria.
 
-## What this version does
+## What changed in v2
 
-- Password-protected workspace using a server-side Netlify Function and signed HttpOnly session cookie.
-- Assessment profile library for unit code, assessment instructions, learning outcomes, rubric and lecturer guidance.
-- Profiles are stored in the lecturer's browser localStorage in this MVP, not in a cloud database.
-- PDF, DOCX and TXT submission upload up to 4 MB.
-- Submission is passed directly through a Netlify Function to the OpenAI Responses API and is not written to a database or application storage.
-- The original filename is not passed to the AI. It is renamed to `submission.pdf`, `submission.docx` or `submission.txt` before model processing.
-- Structured feedback against criteria, strengths, development priorities and manual checks.
-- Explicit prompt safeguards against automated marks, pass/fail decisions and AI-authorship allegations.
-- Every feedback field is editable by the lecturer.
-- Copy student-facing feedback, export a text report, or print/save as PDF.
-- Export/import assessment profiles as JSON for backup.
+Assessment profiles now form a persistent annual library rather than living only in one browser.
 
-## Important governance note
+The workflow is now:
 
-This is a technical prototype. Before processing real identifiable student work, obtain the approvals required by your university. Depending on institutional policy this may include a DPIA, information governance review, confirmation of the lawful basis for processing, approved supplier/API configuration, retention settings and student-facing transparency information.
+`Academic year -> Unit -> Assessment -> Student submission -> Draft review`
 
-The app sets `store: false` on the OpenAI Responses API request, but this does not itself replace institutional review or any OpenAI account-level data retention controls.
+The annual library supports:
 
-## Deploy to Netlify
+- academic year, for example `2026/27`
+- unit code and unit name
+- multiple assessments per unit
+- profile version numbers
+- active and archived profiles
+- duplication of an assessment into the next academic year
+- editing the duplicated brief before it is used
+- export/import of the complete assessment library as JSON
+- migration of any old browser-only First Read profiles into the database
 
-### Option A: GitHub + Netlify
+Assessment profiles are stored in Supabase. Student submissions are still processed transiently and are not written to Supabase or application storage.
 
-1. Create a private GitHub repository.
-2. Put all files from this folder into the repository and push them.
-3. In Netlify, choose **Add new project > Import an existing project** and connect the repository.
-4. Netlify will detect `netlify.toml`. No build command is required.
-5. Add the environment variables listed below.
-6. Deploy.
+## Architecture
 
-### Option B: Netlify CLI
+Browser
+-> authenticated Netlify site
+-> Netlify Functions
+-> Supabase for assessment profiles only
+-> OpenAI API for submission review
 
-Node 22+ is recommended.
+Secrets remain server-side.
+
+## Existing Netlify variables
+
+Keep these variables from v1:
+
+- `NETLIFY_APP_PASSWORD`
+- `AUTH_SECRET`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+
+The default model remains `gpt-5.6-terra`.
+
+## Two new Netlify variables
+
+v2 also requires:
+
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+
+Both are read only by Netlify Functions. The secret key must never be placed in `public/`, browser JavaScript, GitHub or any client-side environment variable.
+
+## Supabase setup
+
+### 1. Create a Supabase project
+
+Create a Supabase project specifically for First Read, or use an approved existing project.
+
+### 2. Create the assessment table
+
+Open the Supabase SQL Editor.
+
+Open `supabase/schema.sql` from this repository, copy all of it into a new SQL query and run it once.
+
+The script creates `public.assessment_profiles`, adds useful indexes, enables Row Level Security and deliberately creates no public browser policies.
+
+### 3. Get the project URL
+
+In Supabase, open the project API/settings area and copy the project URL. Add it to Netlify as:
+
+`SUPABASE_URL`
+
+This is not itself a secret, but it is fine to scope it to Functions.
+
+### 4. Get the server-side secret key
+
+In Supabase, open the project API/settings area and locate the server-side secret key.
+
+Add it to Netlify as:
+
+`SUPABASE_SECRET_KEY`
+
+Treat this as highly sensitive. Mark it as a secret and scope it to Functions only.
+
+### 5. Redeploy Netlify
+
+After both variables have been added, trigger a fresh production deployment.
+
+The Assessment Library should then load from Supabase.
+
+## Recommended Netlify environment-variable configuration
+
+### NETLIFY_APP_PASSWORD
+
+- Secret: yes
+- Scope: Functions
+- Context: Production
+
+### AUTH_SECRET
+
+- Secret: yes
+- Scope: Functions
+- Context: Production
+
+### OPENAI_API_KEY
+
+- Secret: yes
+- Scope: Functions
+- Context: Production
+
+### OPENAI_MODEL
+
+- Secret: no
+- Scope: All scopes is acceptable
+- Value: `gpt-5.6-terra`
+
+### SUPABASE_URL
+
+- Secret: no
+- Scope: Functions
+- Context: Production
+
+### SUPABASE_SECRET_KEY
+
+- Secret: yes
+- Scope: Functions
+- Context: Production
+
+## Updating an existing v1 GitHub repository
+
+Replace the v1 project files with the contents of this v2 folder, but retain the repository's `.git` folder.
+
+Then run:
 
 ```bash
-npm install
-npx netlify login
-npx netlify init
+git add .
+git commit -m "Add persistent annual assessment library"
+git push
 ```
 
-Add the environment variables in Netlify, then:
+Netlify should automatically create a new deployment from the push.
 
-```bash
-npx netlify deploy --prod
-```
+Before that deployment is useful, complete the Supabase setup above and add the two new Netlify variables.
 
-Note: because this site uses Netlify Functions, it is not a pure static drag-and-drop deployment.
+## Day-to-day annual workflow
 
-## Required Netlify environment variables
+At the start of a new academic year:
 
-In Netlify: **Site configuration > Environment variables**
+1. Open Assessment library.
+2. Find last year's assessment.
+3. Choose `Duplicate`.
+4. Enter the new academic year, for example `2027/28`.
+5. Open the copy and update the brief, rubric, word count or instructions as required.
+6. Keep the old version available for reference, or archive it if you do not want it appearing in the normal library view.
 
-- `OPENAI_API_KEY`: your server-side OpenAI API key.
-- `NETLIFY_APP_PASSWORD`: a long unique password for the workspace.
-- `AUTH_SECRET`: at least 32 random characters, preferably much longer.
-- `OPENAI_MODEL`: optional. Defaults to `gpt-5.6-terra` to balance quality and cost.
+When reviewing work:
 
-Generate an auth secret locally, for example:
+1. Choose academic year.
+2. Choose unit.
+3. Choose assessment.
+4. Upload the student's PDF, DOCX or TXT file.
+5. Generate the draft review.
+6. Edit and approve the feedback yourself.
 
-```bash
-openssl rand -hex 32
-```
+## Student-file handling
 
-Never place the API key, password or auth secret in `public/app.js`, GitHub, HTML or any browser-side file.
+The annual database stores assessment profiles only. It does not store student submissions.
+
+A student file is:
+
+- selected locally in the browser
+- sent over HTTPS to an authenticated Netlify Function
+- passed to the OpenAI API for that review request
+- not written to the Supabase assessment table
+- not written to browser localStorage by First Read
+- not deliberately written to Netlify storage by the application
+
+The original submission filename is replaced with a generic filename before model processing.
+
+## Governance
+
+This remains a technical prototype. Before using real identifiable student work, obtain the approvals required by your university, including any required DPIA, information-governance review, approved supplier/API configuration and student-facing transparency information.
+
+The OpenAI request uses `store: false`, but that does not by itself establish institutional approval or zero provider retention.
 
 ## Local development
 
-Copy `.env.example` to `.env` and add development values:
+Copy `.env.example` to `.env` and provide development values:
 
 ```bash
 cp .env.example .env
@@ -78,43 +197,12 @@ npm install
 npm run dev
 ```
 
-Netlify CLI will provide the local URL and run the Functions.
+## Checks
 
-## Recommended first setup
+Run:
 
-Create one assessment profile and paste in:
+```bash
+npm run check
+```
 
-1. The student-facing assessment brief.
-2. Relevant learning outcomes.
-3. The marking criteria or rubric.
-4. Any additional instructions that students genuinely received.
-5. A short description of your preferred feedback style.
-
-Avoid adding hidden criteria or expectations that students were never given.
-
-## Security model in this MVP
-
-The password itself is checked only by the serverless login function. A signed, HttpOnly, SameSite=Strict cookie is used for a 12-hour session. The OpenAI API key remains server-side.
-
-The HTML/JavaScript/CSS assets are public web assets. They contain no student information, assessment profiles or secrets. Assessment profiles are browser-local and the AI analysis endpoint will reject requests without a valid session cookie.
-
-For a multi-user departmental deployment, replace the single workspace password with institutional SSO or a managed identity service and move assessment profiles to an access-controlled database.
-
-## File-size limitation
-
-This prototype limits uploads to 4 MB because the file is transported through a synchronous Netlify Function request as base64. If you routinely receive large dissertations with high-resolution images, the next version should use an approved temporary upload workflow or another controlled server-side ingestion route.
-
-## Suggested phase-two features
-
-- University SSO / Microsoft Entra ID authentication.
-- Supabase or institutional database for centrally managed assessment profiles.
-- DOCX feedback export using a university template.
-- Cohort dashboard based only on lecturer-approved, de-identified themes.
-- Rubric table parser for more explicit criterion mapping.
-- Reference-verification workflow as a separate lecturer-triggered check.
-- Batch workflow for multiple submissions, subject to governance approval.
-- Audit log recording lecturer actions without retaining student submissions.
-
-## OpenAI implementation
-
-The server uses the OpenAI JavaScript SDK and Responses API with Structured Outputs. The default model is `gpt-5.6-terra`, configurable through `OPENAI_MODEL`.
+This syntax-checks the browser application and all Netlify Functions.

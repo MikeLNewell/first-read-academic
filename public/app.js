@@ -1,10 +1,26 @@
-const STORAGE_KEY = "firstReadAssessmentProfilesV1";
-const state = { profiles: [], selectedProfileId: null, file: null, review: null, meta: null };
+const LEGACY_STORAGE_KEY = "firstReadAssessmentProfilesV1";
+const SELECTION_KEY = "firstReadSelectionV2";
+const MIGRATION_KEY = "firstReadLegacyMigrationV2";
+
+const state = {
+  profiles: [],
+  profilesLoaded: false,
+  selectedAcademicYear: null,
+  selectedUnitCode: null,
+  selectedProfileId: null,
+  libraryYear: "all",
+  libraryStatus: "active",
+  file: null,
+  review: null,
+  meta: null
+};
 
 const $ = (id) => document.getElementById(id);
 const els = {
   loginGate: $("loginGate"), appShell: $("appShell"), loginForm: $("loginForm"), password: $("password"), loginError: $("loginError"),
-  logoutButton: $("logoutButton"), profileSelect: $("profileSelect"), profileSummary: $("profileSummary"), profileGrid: $("profileGrid"),
+  logoutButton: $("logoutButton"), academicYearSelect: $("academicYearSelect"), unitSelect: $("unitSelect"), profileSelect: $("profileSelect"),
+  profileSummary: $("profileSummary"), profileGrid: $("profileGrid"), libraryYearFilter: $("libraryYearFilter"), libraryStatusFilter: $("libraryStatusFilter"),
+  libraryDatabaseBanner: $("libraryDatabaseBanner"), legacyMigration: $("legacyMigration"), migrateLegacyProfiles: $("migrateLegacyProfiles"),
   newProfileButton: $("newProfileButton"), goLibraryButton: $("goLibraryButton"), profileDialog: $("profileDialog"), profileForm: $("profileForm"),
   dialogTitle: $("dialogTitle"), closeDialog: $("closeDialog"), cancelProfile: $("cancelProfile"), deleteProfile: $("deleteProfile"),
   submissionFile: $("submissionFile"), dropZone: $("dropZone"), fileCard: $("fileCard"), analyseButton: $("analyseButton"), runHint: $("runHint"),
@@ -13,7 +29,10 @@ const els = {
   exportProfiles: $("exportProfiles"), importProfiles: $("importProfiles"), toast: $("toast")
 };
 
-const profileFields = ["profileId","unitCode","unitName","assessmentName","academicLevel","wordCount","feedbackStyle","assessmentBrief","learningOutcomes","rubric","additionalInstructions"];
+const profileFields = [
+  "profileId", "academicYear", "unitCode", "unitName", "assessmentName", "academicLevel", "wordCount", "version",
+  "feedbackStyle", "assessmentBrief", "learningOutcomes", "rubric", "additionalInstructions"
+];
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -31,19 +50,55 @@ async function api(path, options = {}) {
   return data;
 }
 
-function loadProfiles() {
-  try { state.profiles = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { state.profiles = []; }
-  if (!Array.isArray(state.profiles)) state.profiles = [];
-  state.selectedProfileId = localStorage.getItem(`${STORAGE_KEY}:selected`) || state.profiles[0]?.id || null;
+function currentAcademicYear() {
+  const now = new Date();
+  const start = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${start}/${String((start + 1) % 100).padStart(2, "0")}`;
 }
 
-function saveProfiles() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profiles));
-  if (state.selectedProfileId) localStorage.setItem(`${STORAGE_KEY}:selected`, state.selectedProfileId);
-  renderProfileSelect();
-  renderProfileGrid();
-  updateRunState();
+function nextAcademicYear(value) {
+  const match = /^(\d{4})\/(\d{2})$/.exec(value || "");
+  if (!match) return currentAcademicYear();
+  const start = Number(match[1]) + 1;
+  return `${start}/${String((start + 1) % 100).padStart(2, "0")}`;
+}
+
+function yearSort(a, b) { return b.localeCompare(a); }
+function years() { return [...new Set(state.profiles.map((p) => p.academicYear).filter(Boolean))].sort(yearSort); }
+
+function loadSavedSelection() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SELECTION_KEY) || "{}");
+    state.selectedAcademicYear = saved.academicYear || null;
+    state.selectedUnitCode = saved.unitCode || null;
+    state.selectedProfileId = saved.profileId || null;
+  } catch {}
+}
+
+function saveSelection() {
+  localStorage.setItem(SELECTION_KEY, JSON.stringify({
+    academicYear: state.selectedAcademicYear,
+    unitCode: state.selectedUnitCode,
+    profileId: state.selectedProfileId
+  }));
+}
+
+async function loadProfiles() {
+  try {
+    const data = await api("/api/assessments", { method: "GET", headers: {} });
+    state.profiles = Array.isArray(data.profiles) ? data.profiles : [];
+    state.profilesLoaded = true;
+    els.libraryDatabaseBanner.classList.add("hidden");
+    renderAllProfileViews();
+    renderLegacyMigration();
+  } catch (error) {
+    state.profiles = [];
+    state.profilesLoaded = false;
+    renderAllProfileViews();
+    if (error.status === 401) return showLogin();
+    els.libraryDatabaseBanner.classList.remove("hidden");
+    els.libraryDatabaseBanner.innerHTML = `<strong>Assessment library unavailable.</strong> ${escapeHtml(error.message)} The student review function is unchanged, but annual assessment profiles need the database connection.`;
+  }
 }
 
 function profileComplete(p) {
@@ -52,21 +107,59 @@ function profileComplete(p) {
 
 function selectedProfile() { return state.profiles.find((p) => p.id === state.selectedProfileId) || null; }
 
-function renderProfileSelect() {
-  els.profileSelect.innerHTML = "";
-  if (!state.profiles.length) {
-    const option = document.createElement("option"); option.textContent = "No assessment profiles yet"; option.value = ""; els.profileSelect.append(option);
-    state.selectedProfileId = null;
+function renderAllProfileViews() {
+  renderReviewSelectors();
+  renderLibraryFilters();
+  renderProfileGrid();
+  updateRunState();
+}
+
+function renderReviewSelectors() {
+  const active = state.profiles.filter((p) => !p.isArchived);
+  const availableYears = [...new Set(active.map((p) => p.academicYear).filter(Boolean))].sort(yearSort);
+
+  els.academicYearSelect.innerHTML = "";
+  if (!availableYears.length) {
+    addOption(els.academicYearSelect, "", "No academic years available");
+    els.academicYearSelect.disabled = true;
+    els.unitSelect.innerHTML = ""; addOption(els.unitSelect, "", "No units available"); els.unitSelect.disabled = true;
+    els.profileSelect.innerHTML = ""; addOption(els.profileSelect, "", "No assessments available"); els.profileSelect.disabled = true;
+    state.selectedAcademicYear = null; state.selectedUnitCode = null; state.selectedProfileId = null;
     renderProfileSummary();
     return;
   }
-  for (const p of state.profiles) {
-    const option = document.createElement("option");
-    option.value = p.id; option.textContent = `${p.unitCode} · ${p.assessmentName}${profileComplete(p) ? "" : " · setup required"}`;
-    els.profileSelect.append(option);
+
+  els.academicYearSelect.disabled = false;
+  availableYears.forEach((year) => addOption(els.academicYearSelect, year, year));
+  if (!availableYears.includes(state.selectedAcademicYear)) {
+    state.selectedAcademicYear = availableYears.includes(currentAcademicYear()) ? currentAcademicYear() : availableYears[0];
+    state.selectedUnitCode = null; state.selectedProfileId = null;
   }
-  if (!state.profiles.some(p => p.id === state.selectedProfileId)) state.selectedProfileId = state.profiles[0].id;
-  els.profileSelect.value = state.selectedProfileId;
+  els.academicYearSelect.value = state.selectedAcademicYear;
+
+  const yearProfiles = active.filter((p) => p.academicYear === state.selectedAcademicYear);
+  const unitMap = new Map();
+  yearProfiles.forEach((p) => unitMap.set(p.unitCode, p.unitName));
+  const units = [...unitMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  els.unitSelect.innerHTML = "";
+  units.forEach(([code, name]) => addOption(els.unitSelect, code, `${code} · ${name}`));
+  if (!units.some(([code]) => code === state.selectedUnitCode)) {
+    state.selectedUnitCode = units[0]?.[0] || null;
+    state.selectedProfileId = null;
+  }
+  els.unitSelect.disabled = !units.length;
+  if (state.selectedUnitCode) els.unitSelect.value = state.selectedUnitCode;
+
+  const assessments = yearProfiles
+    .filter((p) => p.unitCode === state.selectedUnitCode)
+    .sort((a, b) => a.assessmentName.localeCompare(b.assessmentName) || (b.version || 1) - (a.version || 1));
+  els.profileSelect.innerHTML = "";
+  assessments.forEach((p) => addOption(els.profileSelect, p.id, `${p.assessmentName} · v${p.version || 1}${profileComplete(p) ? "" : " · setup required"}`));
+  if (!assessments.some((p) => p.id === state.selectedProfileId)) state.selectedProfileId = assessments[0]?.id || null;
+  els.profileSelect.disabled = !assessments.length;
+  if (state.selectedProfileId) els.profileSelect.value = state.selectedProfileId;
+
+  saveSelection();
   renderProfileSummary();
 }
 
@@ -74,31 +167,75 @@ function renderProfileSummary() {
   const p = selectedProfile();
   if (!p) {
     els.profileSummary.className = "profile-summary empty-state";
-    els.profileSummary.textContent = "Create an assessment profile before reviewing a submission.";
+    els.profileSummary.textContent = "Create or select an assessment profile before reviewing a submission.";
     return;
   }
   const status = profileComplete(p) ? "Ready to use" : "Setup required: add a substantive brief and marking criteria";
   els.profileSummary.className = "profile-summary";
-  els.profileSummary.innerHTML = `<strong>${escapeHtml(p.unitName)}</strong><br>${escapeHtml(p.assessmentName)}<div class="profile-meta"><span class="mini-chip">${escapeHtml(p.academicLevel || "Level not set")}</span><span class="mini-chip">${escapeHtml(p.wordCount || "No word limit set")}</span><span class="mini-chip">${status}</span></div>`;
+  els.profileSummary.innerHTML = `<strong>${escapeHtml(p.unitName)}</strong><br>${escapeHtml(p.assessmentName)}<div class="profile-meta"><span class="mini-chip">${escapeHtml(p.academicYear)}</span><span class="mini-chip">v${escapeHtml(p.version || 1)}</span><span class="mini-chip">${escapeHtml(p.academicLevel || "Level not set")}</span><span class="mini-chip">${escapeHtml(p.wordCount || "No word limit set")}</span><span class="mini-chip">${status}</span></div>`;
+}
+
+function renderLibraryFilters() {
+  const availableYears = years();
+  const currentValue = state.libraryYear;
+  els.libraryYearFilter.innerHTML = "";
+  addOption(els.libraryYearFilter, "all", "All academic years");
+  availableYears.forEach((year) => addOption(els.libraryYearFilter, year, year));
+  state.libraryYear = currentValue === "all" || availableYears.includes(currentValue) ? currentValue : "all";
+  els.libraryYearFilter.value = state.libraryYear;
+  els.libraryStatusFilter.value = state.libraryStatus;
 }
 
 function renderProfileGrid() {
   els.profileGrid.innerHTML = "";
-  if (!state.profiles.length) {
-    els.profileGrid.innerHTML = `<div class="empty-library"><p>No assessment profiles yet.</p><p>Create one by pasting in the brief, learning outcomes and marking criteria.</p></div>`;
+  let profiles = [...state.profiles];
+  if (state.libraryYear !== "all") profiles = profiles.filter((p) => p.academicYear === state.libraryYear);
+  if (state.libraryStatus === "active") profiles = profiles.filter((p) => !p.isArchived);
+  if (state.libraryStatus === "archived") profiles = profiles.filter((p) => p.isArchived);
+
+  if (!profiles.length) {
+    els.profileGrid.innerHTML = `<div class="empty-library"><p>No assessment profiles match this view.</p><p>Create a profile, change the filters, or duplicate a previous year's brief.</p></div>`;
     return;
   }
-  state.profiles.forEach((p) => {
-    const card = document.createElement("article"); card.className = "profile-card";
-    card.innerHTML = `<div><span class="profile-code">${escapeHtml(p.unitCode || "NO CODE")}</span><h3>${escapeHtml(p.unitName || "Untitled unit")}</h3><p>${escapeHtml(p.assessmentName || "Untitled assessment")}</p></div><footer><span class="setup-status ${profileComplete(p) ? "" : "incomplete"}">${profileComplete(p) ? "Ready" : "Setup required"}</span><button class="text-button" type="button">Edit profile</button></footer>`;
-    card.querySelector("button").addEventListener("click", () => openProfileDialog(p.id));
-    els.profileGrid.append(card);
+
+  const grouped = new Map();
+  profiles.sort((a, b) => yearSort(a.academicYear, b.academicYear) || a.unitCode.localeCompare(b.unitCode) || a.assessmentName.localeCompare(b.assessmentName));
+  profiles.forEach((p) => {
+    if (!grouped.has(p.academicYear)) grouped.set(p.academicYear, []);
+    grouped.get(p.academicYear).push(p);
   });
+
+  for (const [year, yearProfiles] of grouped.entries()) {
+    const group = document.createElement("section");
+    group.className = "year-group";
+    group.innerHTML = `<div class="year-heading"><div><p class="eyebrow">Academic year</p><h3>${escapeHtml(year)}</h3></div><span>${yearProfiles.length} assessment${yearProfiles.length === 1 ? "" : "s"}</span></div><div class="profile-grid-inner"></div>`;
+    const grid = group.querySelector(".profile-grid-inner");
+    yearProfiles.forEach((p) => grid.append(profileCard(p)));
+    els.profileGrid.append(group);
+  }
+}
+
+function profileCard(p) {
+  const card = document.createElement("article");
+  card.className = `profile-card${p.isArchived ? " archived" : ""}`;
+  card.innerHTML = `<div><div class="card-kickers"><span class="profile-code">${escapeHtml(p.unitCode || "NO CODE")}</span><span class="version-chip">v${escapeHtml(p.version || 1)}</span></div><h3>${escapeHtml(p.unitName || "Untitled unit")}</h3><p>${escapeHtml(p.assessmentName || "Untitled assessment")}</p></div><footer><span class="setup-status ${profileComplete(p) ? "" : "incomplete"}">${p.isArchived ? "Archived" : profileComplete(p) ? "Ready" : "Setup required"}</span><div class="card-actions"><button class="text-button edit" type="button">Edit</button><button class="text-button duplicate" type="button">Duplicate</button><button class="text-button archive" type="button">${p.isArchived ? "Restore" : "Archive"}</button></div></footer>`;
+  card.querySelector(".edit").addEventListener("click", () => openProfileDialog(p.id));
+  card.querySelector(".duplicate").addEventListener("click", () => duplicateProfile(p.id));
+  card.querySelector(".archive").addEventListener("click", () => toggleArchive(p.id));
+  return card;
+}
+
+function addOption(select, value, label) {
+  const option = document.createElement("option"); option.value = value; option.textContent = label; select.append(option);
 }
 
 function openProfileDialog(id = null) {
-  const p = state.profiles.find((x) => x.id === id) || {};
-  profileFields.forEach((field) => { const el = $(field); if (el) el.value = field === "profileId" ? (p.id || "") : (p[field] || ""); });
+  const p = state.profiles.find((x) => x.id === id) || { academicYear: state.libraryYear !== "all" ? state.libraryYear : (state.selectedAcademicYear || currentAcademicYear()), version: 1 };
+  profileFields.forEach((field) => {
+    const el = $(field);
+    if (el) el.value = field === "profileId" ? (p.id || "") : (p[field] ?? "");
+  });
+  $("isArchived").checked = Boolean(p.isArchived);
   els.dialogTitle.textContent = id ? "Edit assessment profile" : "New assessment profile";
   els.deleteProfile.classList.toggle("hidden", !id);
   els.profileDialog.showModal();
@@ -106,25 +243,99 @@ function openProfileDialog(id = null) {
 
 function closeProfileDialog() { els.profileDialog.close(); els.profileForm.reset(); $("profileId").value = ""; }
 
-function handleProfileSave(event) {
+async function handleProfileSave(event) {
   event.preventDefault();
   const profile = {};
   profileFields.forEach((field) => { if (field !== "profileId") profile[field] = $(field).value.trim(); });
+  profile.version = Number.parseInt(profile.version, 10) || 1;
+  profile.isArchived = $("isArchived").checked;
   const existingId = $("profileId").value;
-  profile.id = existingId || crypto.randomUUID();
-  profile.updatedAt = new Date().toISOString();
-  if (existingId) state.profiles = state.profiles.map((p) => p.id === existingId ? profile : p);
-  else state.profiles.unshift(profile);
-  state.selectedProfileId = profile.id;
-  saveProfiles(); closeProfileDialog(); showToast("Assessment profile saved");
+  try {
+    const data = await api(existingId ? `/api/assessments?id=${encodeURIComponent(existingId)}` : "/api/assessments", {
+      method: existingId ? "PATCH" : "POST",
+      body: JSON.stringify(profile)
+    });
+    if (existingId) state.profiles = state.profiles.map((p) => p.id === existingId ? data.profile : p);
+    else state.profiles.push(data.profile);
+    state.selectedAcademicYear = data.profile.academicYear;
+    state.selectedUnitCode = data.profile.unitCode;
+    state.selectedProfileId = data.profile.isArchived ? null : data.profile.id;
+    renderAllProfileViews(); closeProfileDialog(); showToast("Assessment profile saved");
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    else showToast(error.message || "Assessment profile could not be saved");
+  }
 }
 
-function deleteCurrentProfile() {
+async function deleteCurrentProfile() {
   const id = $("profileId").value;
-  if (!id || !confirm("Delete this assessment profile from this browser?")) return;
-  state.profiles = state.profiles.filter((p) => p.id !== id);
-  state.selectedProfileId = state.profiles[0]?.id || null;
-  saveProfiles(); closeProfileDialog(); showToast("Assessment profile deleted");
+  if (!id || !confirm("Permanently delete this assessment profile from the annual library?")) return;
+  try {
+    await api(`/api/assessments?id=${encodeURIComponent(id)}`, { method: "DELETE", body: "{}" });
+    state.profiles = state.profiles.filter((p) => p.id !== id);
+    if (state.selectedProfileId === id) state.selectedProfileId = null;
+    renderAllProfileViews(); closeProfileDialog(); showToast("Assessment profile deleted");
+  } catch (error) { showToast(error.message || "Profile could not be deleted"); }
+}
+
+async function duplicateProfile(id) {
+  const source = state.profiles.find((p) => p.id === id);
+  if (!source) return;
+  const suggested = nextAcademicYear(source.academicYear);
+  const targetYear = prompt("Duplicate this assessment into which academic year?", suggested);
+  if (targetYear === null) return;
+  if (!/^\d{4}\/\d{2}$/.test(targetYear.trim())) return showToast("Use an academic year such as 2027/28");
+  const copy = { ...source, id: undefined, academicYear: targetYear.trim(), version: 1, isArchived: false, sourceProfileId: source.id };
+  try {
+    const data = await api("/api/assessments", { method: "POST", body: JSON.stringify(copy) });
+    state.profiles.push(data.profile);
+    state.libraryYear = data.profile.academicYear;
+    state.selectedAcademicYear = data.profile.academicYear;
+    state.selectedUnitCode = data.profile.unitCode;
+    state.selectedProfileId = data.profile.id;
+    renderAllProfileViews(); showToast(`Duplicated to ${data.profile.academicYear}`);
+  } catch (error) { showToast(error.message || "Profile could not be duplicated"); }
+}
+
+async function toggleArchive(id) {
+  const profile = state.profiles.find((p) => p.id === id);
+  if (!profile) return;
+  try {
+    const data = await api(`/api/assessments?id=${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ ...profile, isArchived: !profile.isArchived }) });
+    state.profiles = state.profiles.map((p) => p.id === id ? data.profile : p);
+    if (data.profile.isArchived && state.selectedProfileId === id) state.selectedProfileId = null;
+    renderAllProfileViews(); showToast(data.profile.isArchived ? "Assessment archived" : "Assessment restored");
+  } catch (error) { showToast(error.message || "Profile could not be updated"); }
+}
+
+function legacyProfiles() {
+  if (localStorage.getItem(MIGRATION_KEY) === "complete") return [];
+  try {
+    const profiles = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY) || "[]");
+    return Array.isArray(profiles) ? profiles : [];
+  } catch { return []; }
+}
+
+function renderLegacyMigration() {
+  const count = legacyProfiles().length;
+  els.legacyMigration.classList.toggle("hidden", !count);
+  if (count) els.legacyMigration.querySelector("p").textContent = `${count} older browser-only assessment profile${count === 1 ? " was" : "s were"} found. You can copy them into the persistent annual library.`;
+}
+
+async function migrateLegacy() {
+  const legacy = legacyProfiles();
+  if (!legacy.length) return;
+  els.migrateLegacyProfiles.disabled = true;
+  try {
+    for (const p of legacy) {
+      const profile = { ...p, id: undefined, academicYear: p.academicYear || currentAcademicYear(), version: p.version || 1, isArchived: false };
+      const data = await api("/api/assessments", { method: "POST", body: JSON.stringify(profile) });
+      state.profiles.push(data.profile);
+    }
+    localStorage.setItem(MIGRATION_KEY, "complete");
+    renderAllProfileViews(); renderLegacyMigration(); showToast("Browser profiles copied into annual library");
+  } catch (error) { showToast(error.message || "Migration stopped before completion"); }
+  finally { els.migrateLegacyProfiles.disabled = false; }
 }
 
 function setFile(file) {
@@ -141,11 +352,11 @@ function setFile(file) {
 
 function updateRunState() {
   const p = selectedProfile();
-  const ready = Boolean(state.file && p && profileComplete(p));
+  const ready = Boolean(state.file && p && profileComplete(p) && !p.isArchived);
   els.analyseButton.disabled = !ready;
-  if (!p) els.runHint.textContent = "Create an assessment profile first.";
+  if (!p) els.runHint.textContent = "Select an academic year, unit and assessment first.";
   else if (!profileComplete(p)) els.runHint.textContent = "Finish setting up the selected assessment profile.";
-  else if (!state.file) els.runHint.textContent = "Assessment ready. Add a student submission.";
+  else if (!state.file) els.runHint.textContent = `${p.academicYear} · ${p.unitCode} · ${p.assessmentName} is ready. Add a student submission.`;
   else els.runHint.textContent = "Assessment and submission ready. The model will not generate a mark.";
 }
 
@@ -167,14 +378,14 @@ async function runAnalysis() {
   els.progressText.textContent = "Packaging the submission without saving it to the site…";
   try {
     const fileBase64 = await fileToBase64(state.file);
-    els.progressText.textContent = "Checking evidence against the brief and marking criteria…";
+    els.progressText.textContent = `Checking evidence against ${p.unitCode} · ${p.assessmentName} (${p.academicYear})…`;
     const data = await api("/api/analyse", { method: "POST", body: JSON.stringify({ fileName: state.file.name, fileBase64, assessment: p }) });
     state.review = data.result; state.meta = data.meta;
     renderResults();
     els.resultsSection.classList.remove("hidden");
     els.resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
-    if (error.status === 401) { showLogin(); }
+    if (error.status === 401) showLogin();
     showToast(error.message || "Review failed");
   } finally {
     els.progressPanel.classList.add("hidden");
@@ -221,7 +432,7 @@ function setByPath(obj, path, value) {
 function compiledFeedback() {
   const p = selectedProfile(); const r = state.review;
   if (!r) return "";
-  return `${p?.unitCode || ""} ${p?.unitName || ""}\n${p?.assessmentName || ""}\n\nSTUDENT FEEDBACK\n\n${r.student_feedback || ""}\n\nLECTURER WORKING NOTES\n\nOverall reading\n${r.overall_summary || ""}\n\nDevelopment priorities\n${(r.development_priorities || []).map((x, i) => `${i+1}. ${x.priority}\nWhy it matters: ${x.why_it_matters}\nSuggested action: ${x.suggested_action}`).join("\n\n")}\n\nManual checks\n${(r.manual_checks || []).map((x, i) => `${i+1}. ${x.category}: ${x.observation}\nAction: ${x.action}`).join("\n\n")}\n\nGenerated as an AI-assisted draft for lecturer review. No automated mark or grade has been produced.`;
+  return `${p?.academicYear || ""}\n${p?.unitCode || ""} ${p?.unitName || ""}\n${p?.assessmentName || ""}\n\nSTUDENT FEEDBACK\n\n${r.student_feedback || ""}\n\nLECTURER WORKING NOTES\n\nOverall reading\n${r.overall_summary || ""}\n\nDevelopment priorities\n${(r.development_priorities || []).map((x, i) => `${i+1}. ${x.priority}\nWhy it matters: ${x.why_it_matters}\nSuggested action: ${x.suggested_action}`).join("\n\n")}\n\nManual checks\n${(r.manual_checks || []).map((x, i) => `${i+1}. ${x.category}: ${x.observation}\nAction: ${x.action}`).join("\n\n")}\n\nGenerated as an AI-assisted draft for lecturer review. No automated mark or grade has been produced.`;
 }
 
 function downloadText(name, content, type = "text/plain") {
@@ -230,16 +441,21 @@ function downloadText(name, content, type = "text/plain") {
 }
 
 function exportProfiles() {
-  downloadText(`first-read-assessment-profiles-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), profiles: state.profiles }, null, 2), "application/json");
+  downloadText(`first-read-assessment-library-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), profiles: state.profiles }, null, 2), "application/json");
 }
 
 async function importProfiles(file) {
   try {
     const parsed = JSON.parse(await file.text()); const profiles = Array.isArray(parsed) ? parsed : parsed.profiles;
     if (!Array.isArray(profiles)) throw new Error("No profile list found");
-    const normalised = profiles.map((p) => ({ ...p, id: p.id || crypto.randomUUID() }));
-    state.profiles = normalised; state.selectedProfileId = normalised[0]?.id || null; saveProfiles(); showToast("Profiles imported");
-  } catch { showToast("That file does not contain valid First Read profiles"); }
+    let imported = 0;
+    for (const p of profiles) {
+      const profile = { ...p, id: undefined, academicYear: p.academicYear || currentAcademicYear(), version: p.version || 1, isArchived: Boolean(p.isArchived) };
+      const data = await api("/api/assessments", { method: "POST", body: JSON.stringify(profile) });
+      state.profiles.push(data.profile); imported += 1;
+    }
+    renderAllProfileViews(); showToast(`${imported} profile${imported === 1 ? "" : "s"} imported`);
+  } catch (error) { showToast(error.message || "That file does not contain valid First Read profiles"); }
 }
 
 function navigate(screen) {
@@ -252,34 +468,44 @@ async function checkSession() {
   try { const data = await api("/api/session", { method: "GET", headers: {} }); data.authenticated ? showApp() : showLogin(); }
   catch { showLogin(); }
 }
-function showApp() { els.loginGate.classList.add("hidden"); els.appShell.classList.remove("hidden"); els.password.value = ""; els.loginError.textContent = ""; }
+function showApp() {
+  els.loginGate.classList.add("hidden"); els.appShell.classList.remove("hidden"); els.password.value = ""; els.loginError.textContent = "";
+  if (!state.profilesLoaded) loadProfiles();
+}
 function showLogin() { els.appShell.classList.add("hidden"); els.loginGate.classList.remove("hidden"); setTimeout(() => els.password.focus(), 50); }
-function showToast(message) { els.toast.textContent = message; els.toast.classList.add("show"); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 2600); }
+function showToast(message) { els.toast.textContent = message; els.toast.classList.add("show"); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 3000); }
 function formatBytes(bytes) { return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); }
 function escapeAttr(value = "") { return escapeHtml(value).replace(/\n/g, " "); }
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault(); els.loginError.textContent = "";
-  try { await api("/api/login", { method: "POST", body: JSON.stringify({ password: els.password.value }) }); showApp(); }
+  try { await api("/api/login", { method: "POST", body: JSON.stringify({ password: els.password.value }) }); state.profilesLoaded = false; showApp(); }
   catch (error) { els.loginError.textContent = error.message; }
 });
-els.logoutButton.addEventListener("click", async () => { try { await api("/api/logout", { method: "POST", body: "{}" }); } catch {} showLogin(); });
+els.logoutButton.addEventListener("click", async () => { try { await api("/api/logout", { method: "POST", body: "{}" }); } catch {} state.profilesLoaded = false; showLogin(); });
 document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.screen)));
 els.goLibraryButton.addEventListener("click", () => navigate("library"));
 els.newProfileButton.addEventListener("click", () => openProfileDialog());
 els.closeDialog.addEventListener("click", closeProfileDialog); els.cancelProfile.addEventListener("click", closeProfileDialog);
 els.profileForm.addEventListener("submit", handleProfileSave); els.deleteProfile.addEventListener("click", deleteCurrentProfile);
-els.profileSelect.addEventListener("change", () => { state.selectedProfileId = els.profileSelect.value || null; saveProfiles(); renderProfileSummary(); });
+els.academicYearSelect.addEventListener("change", () => { state.selectedAcademicYear = els.academicYearSelect.value || null; state.selectedUnitCode = null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
+els.unitSelect.addEventListener("change", () => { state.selectedUnitCode = els.unitSelect.value || null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
+els.profileSelect.addEventListener("change", () => { state.selectedProfileId = els.profileSelect.value || null; saveSelection(); renderProfileSummary(); updateRunState(); });
+els.libraryYearFilter.addEventListener("change", () => { state.libraryYear = els.libraryYearFilter.value; renderProfileGrid(); });
+els.libraryStatusFilter.addEventListener("change", () => { state.libraryStatus = els.libraryStatusFilter.value; renderProfileGrid(); });
+els.migrateLegacyProfiles.addEventListener("click", migrateLegacy);
 els.submissionFile.addEventListener("change", () => setFile(els.submissionFile.files[0]));
 ["dragenter","dragover"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.add("dragover"); }));
 ["dragleave","drop"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.remove("dragover"); }));
 els.dropZone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
 els.analyseButton.addEventListener("click", runAnalysis);
 els.copyFeedback.addEventListener("click", async () => { if (!state.review) return; await navigator.clipboard.writeText(state.review.student_feedback || ""); showToast("Student feedback copied"); });
-els.exportFeedback.addEventListener("click", () => { if (!state.review) return; const p = selectedProfile(); downloadText(`${p?.unitCode || "assessment"}-first-read-feedback.txt`, compiledFeedback()); });
+els.exportFeedback.addEventListener("click", () => { if (!state.review) return; const p = selectedProfile(); downloadText(`${p?.unitCode || "assessment"}-${(p?.academicYear || "").replace("/", "-")}-first-read-feedback.txt`, compiledFeedback()); });
 els.printFeedback.addEventListener("click", () => window.print());
 els.exportProfiles.addEventListener("click", exportProfiles);
 els.importProfiles.addEventListener("change", () => { if (els.importProfiles.files[0]) importProfiles(els.importProfiles.files[0]); els.importProfiles.value = ""; });
 
-loadProfiles(); renderProfileSelect(); renderProfileGrid(); updateRunState(); checkSession();
+loadSavedSelection();
+renderAllProfileViews();
+checkSession();

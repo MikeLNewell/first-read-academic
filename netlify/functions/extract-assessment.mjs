@@ -34,6 +34,16 @@ function safeName(ext) {
   return ext === "docx" ? "assessment-brief.docx" : "assessment-brief.pdf";
 }
 
+function mimeType(ext) {
+  return ext === "docx"
+    ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    : "application/pdf";
+}
+
+function asFileDataUrl(ext, base64) {
+  return `data:${mimeType(ext)};base64,${base64}`;
+}
+
 function clean(value, max) {
   return String(value || "").trim().slice(0, max);
 }
@@ -92,7 +102,7 @@ RULES:
           role: "user",
           content: [
             { type: "input_text", text: userText },
-            { type: "input_file", filename: safeName(ext), file_data: fileBase64 }
+            { type: "input_file", filename: safeName(ext), file_data: asFileDataUrl(ext, fileBase64) }
           ]
         }
       ],
@@ -131,7 +141,10 @@ RULES:
   } catch (error) {
     console.error("Assessment brief extraction failed", error);
     if (error?.status === 429) return json(429, { error: "OpenAI rate limit reached. Please try the brief import again shortly." });
-    if (error?.status === 400) return json(400, { error: "The assessment brief could not be read. Try saving the Word file again or exporting it as PDF." });
+    if (error?.status === 400) {
+      console.error("OpenAI rejected assessment brief input", { message: error?.message, code: error?.code, param: error?.param });
+      return json(400, { error: "The assessment brief could not be processed. The file upload format has been rejected by the AI service." });
+    }
     return json(500, { error: "Assessment brief extraction failed. Check the Netlify function log and OpenAI API configuration." });
   }
 }

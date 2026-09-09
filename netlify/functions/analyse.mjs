@@ -152,7 +152,7 @@ For each criterion, explain what evidence is present, what is working, and the m
             {
               type: "input_file",
               filename: safeSubmissionName(fileName),
-              file_data: fileBase64
+              file_data: `data:${mime};base64,${fileBase64}`
             }
           ]
         }
@@ -182,8 +182,11 @@ For each criterion, explain what evidence is present, what is working, and the m
     });
   } catch (error) {
     console.error("Analysis failed", error);
+    if (error?.status === 400) {
+      console.error("OpenAI rejected submission input", { message: error?.message, code: error?.code, param: error?.param });
+    }
     const message = error?.status === 400
-      ? "The submission could not be processed. Try exporting it as a PDF and uploading again."
+      ? "The submission could not be processed because the file input was rejected by the AI service."
       : "The AI review could not be completed. Check the Netlify function log and API configuration.";
     return json(error?.status === 429 ? 429 : 500, { error: message });
   }

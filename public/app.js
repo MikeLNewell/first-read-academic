@@ -23,6 +23,7 @@ const els = {
   libraryDatabaseBanner: $("libraryDatabaseBanner"), legacyMigration: $("legacyMigration"), migrateLegacyProfiles: $("migrateLegacyProfiles"),
   newProfileButton: $("newProfileButton"), goLibraryButton: $("goLibraryButton"), profileDialog: $("profileDialog"), profileForm: $("profileForm"),
   dialogTitle: $("dialogTitle"), closeDialog: $("closeDialog"), cancelProfile: $("cancelProfile"), deleteProfile: $("deleteProfile"),
+  assessmentBriefFile: $("assessmentBriefFile"), briefImportStatus: $("briefImportStatus"),
   submissionFile: $("submissionFile"), dropZone: $("dropZone"), fileCard: $("fileCard"), analyseButton: $("analyseButton"), runHint: $("runHint"),
   progressPanel: $("progressPanel"), progressText: $("progressText"), resultsSection: $("resultsSection"), resultsContent: $("resultsContent"),
   copyFeedback: $("copyFeedback"), exportFeedback: $("exportFeedback"), printFeedback: $("printFeedback"),
@@ -238,10 +239,89 @@ function openProfileDialog(id = null) {
   $("isArchived").checked = Boolean(p.isArchived);
   els.dialogTitle.textContent = id ? "Edit assessment profile" : "New assessment profile";
   els.deleteProfile.classList.toggle("hidden", !id);
+  resetBriefImportStatus();
+  if (els.assessmentBriefFile) els.assessmentBriefFile.value = "";
   els.profileDialog.showModal();
 }
 
-function closeProfileDialog() { els.profileDialog.close(); els.profileForm.reset(); $("profileId").value = ""; }
+function closeProfileDialog() {
+  els.profileDialog.close();
+  els.profileForm.reset();
+  $("profileId").value = "";
+  if (els.assessmentBriefFile) els.assessmentBriefFile.value = "";
+  resetBriefImportStatus();
+}
+
+function resetBriefImportStatus() {
+  if (!els.briefImportStatus) return;
+  els.briefImportStatus.className = "brief-import-status hidden";
+  els.briefImportStatus.innerHTML = "";
+}
+
+function setBriefImportStatus(kind, html) {
+  if (!els.briefImportStatus) return;
+  els.briefImportStatus.className = `brief-import-status ${kind}`;
+  els.briefImportStatus.innerHTML = html;
+}
+
+async function importAssessmentBrief(file) {
+  if (!file) return;
+  const ext = file.name.toLowerCase().split(".").pop();
+  if (!["docx", "pdf"].includes(ext)) {
+    setBriefImportStatus("error", "Please choose a DOCX or PDF assessment brief.");
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    setBriefImportStatus("error", "This version accepts assessment briefs up to 4 MB.");
+    return;
+  }
+
+  const chooser = els.assessmentBriefFile;
+  if (chooser) chooser.disabled = true;
+  setBriefImportStatus("working", `<strong>Reading ${escapeHtml(file.name)}…</strong><br>Extracting the brief, learning outcomes and marking criteria. Nothing is saved until you press Save profile.`);
+
+  try {
+    const fileBase64 = await fileToBase64(file);
+    const data = await api("/api/extract-assessment", {
+      method: "POST",
+      body: JSON.stringify({ fileName: file.name, fileBase64, academicYear: $("academicYear").value.trim() })
+    });
+    const x = data.extracted || {};
+
+    // The chosen annual-library year takes precedence over a year embedded in an old brief.
+    if (!$("academicYear").value.trim() && x.academicYear) $("academicYear").value = x.academicYear;
+    const metadataMappings = {
+      unitCode: x.unitCode,
+      unitName: x.unitName,
+      assessmentName: x.assessmentName,
+      academicLevel: x.academicLevel,
+      wordCount: x.wordCount
+    };
+    Object.entries(metadataMappings).forEach(([id, value]) => {
+      if (String(value || "").trim()) $(id).value = String(value).trim();
+    });
+    // Replace substantive content exactly with this import so an older brief cannot silently leave stale criteria behind.
+    $("assessmentBrief").value = String(x.assessmentBrief || "").trim();
+    $("learningOutcomes").value = String(x.learningOutcomes || "").trim();
+    $("rubric").value = String(x.rubric || "").trim();
+    $("additionalInstructions").value = String(x.additionalInstructions || "").trim();
+
+    const notes = Array.isArray(x.extractionNotes) ? x.extractionNotes.filter(Boolean) : [];
+    const briefReady = String(x.assessmentBrief || "").trim().length >= 40;
+    const rubricReady = String(x.rubric || "").trim().length >= 20;
+    const noteHtml = notes.length ? `<ul>${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}</ul>` : "";
+    const statusClass = briefReady && rubricReady ? "success" : "warning";
+    const readiness = briefReady && rubricReady
+      ? "The substantive brief and marking criteria were detected."
+      : "Extraction completed, but check the highlighted content carefully. First Read will still require a substantive brief and rubric before saving.";
+    setBriefImportStatus(statusClass, `<strong>Imported from ${escapeHtml(file.name)}.</strong> ${readiness}<br>Review every populated field below before saving.${noteHtml}`);
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    setBriefImportStatus("error", escapeHtml(error.message || "The assessment brief could not be imported."));
+  } finally {
+    if (chooser) { chooser.disabled = false; chooser.value = ""; }
+  }
+}
 
 async function handleProfileSave(event) {
   event.preventDefault();
@@ -489,6 +569,7 @@ els.goLibraryButton.addEventListener("click", () => navigate("library"));
 els.newProfileButton.addEventListener("click", () => openProfileDialog());
 els.closeDialog.addEventListener("click", closeProfileDialog); els.cancelProfile.addEventListener("click", closeProfileDialog);
 els.profileForm.addEventListener("submit", handleProfileSave); els.deleteProfile.addEventListener("click", deleteCurrentProfile);
+if (els.assessmentBriefFile) els.assessmentBriefFile.addEventListener("change", () => importAssessmentBrief(els.assessmentBriefFile.files[0]));
 els.academicYearSelect.addEventListener("change", () => { state.selectedAcademicYear = els.academicYearSelect.value || null; state.selectedUnitCode = null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
 els.unitSelect.addEventListener("change", () => { state.selectedUnitCode = els.unitSelect.value || null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
 els.profileSelect.addEventListener("change", () => { state.selectedProfileId = els.profileSelect.value || null; saveSelection(); renderProfileSummary(); updateRunState(); });

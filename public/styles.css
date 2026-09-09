@@ -240,3 +240,17 @@ textarea { resize: vertical; line-height: 1.5; }
   .library-filters select { min-width: 0; }
   .year-heading { align-items: flex-start; }
 }
+
+/* v3 assessment brief import */
+.brief-import-panel { margin: 0 0 22px; padding: 18px; border: 1px solid #d9dfd8; border-radius: 16px; background: #f4f7f2; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center; }
+.brief-import-copy h3 { margin: 2px 0 7px; font-size: 1.05rem; letter-spacing: -.02em; }
+.brief-import-copy p:last-child { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.55; max-width: 650px; }
+.brief-import-actions { display: grid; gap: 7px; justify-items: start; }
+.brief-import-limit { color: var(--muted); font-size: .68rem; white-space: nowrap; }
+.brief-import-status { grid-column: 1 / -1; padding: 11px 13px; border-radius: 10px; background: #fff; border: 1px solid var(--line); color: var(--muted); font-size: .76rem; line-height: 1.5; }
+.brief-import-status.working { color: #365146; background: #eef5ef; }
+.brief-import-status.success { color: #28523d; background: #edf7ef; border-color: #cfe3d3; }
+.brief-import-status.warning { color: #6a552c; background: #fff5df; border-color: #ead39f; }
+.brief-import-status.error { color: #7b3434; background: #fff0ef; border-color: #e4c2bf; }
+.brief-import-status ul { margin: 7px 0 0 18px; padding: 0; }
+@media (max-width: 680px) { .brief-import-panel { grid-template-columns: 1fr; } .brief-import-limit { white-space: normal; } }

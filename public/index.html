@@ -171,6 +171,18 @@
     <form id="profileForm" method="dialog">
       <div class="dialog-head"><div><p class="eyebrow">Assessment context</p><h2 id="dialogTitle">New assessment profile</h2></div><button class="icon-button" type="button" id="closeDialog" aria-label="Close">×</button></div>
       <input id="profileId" type="hidden" />
+      <section class="brief-import-panel" aria-labelledby="briefImportHeading">
+        <div class="brief-import-copy">
+          <p class="eyebrow">Fast setup</p>
+          <h3 id="briefImportHeading">Import an existing assessment brief</h3>
+          <p>Upload the DOCX or PDF you already use. First Read will extract the assessment instructions, learning outcomes and marking rubric into the fields below for you to check before saving.</p>
+        </div>
+        <div class="brief-import-actions">
+          <label class="button secondary file-button">Choose brief<input id="assessmentBriefFile" type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" /></label>
+          <span class="brief-import-limit">DOCX or PDF · up to 4 MB · processed transiently</span>
+        </div>
+        <div id="briefImportStatus" class="brief-import-status hidden" role="status" aria-live="polite"></div>
+      </section>
       <div class="form-grid two">
         <label>Academic year<input id="academicYear" maxlength="7" placeholder="e.g. 2026/27" pattern="\d{4}/\d{2}" required /></label>
         <label>Profile version<input id="version" type="number" min="1" max="99" value="1" required /></label>

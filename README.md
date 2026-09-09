@@ -1,10 +1,26 @@
-# First Read v2
+# First Read v3
 
 First Read is a lecturer-in-the-loop, AI-assisted initial review workspace for checking student submissions against the correct assessment brief and marking criteria.
 
-## What changed in v2
+## What changed in v3
 
-Assessment profiles now form a persistent annual library rather than living only in one browser.
+First Read can now build an assessment profile directly from an existing DOCX or PDF assessment brief. In `New assessment profile`, choose `Choose brief`; the document is sent transiently to the authenticated extraction function, which uses the OpenAI API to populate the profile fields for lecturer review. Nothing is added to the annual library until `Save profile` is pressed.
+
+The import is deliberately conservative:
+
+- it extracts rather than rewrites the brief
+- it keeps marking criteria, descriptors and weightings where present
+- it leaves genuinely missing fields blank rather than inventing requirements
+- the annual-library academic year already selected by the lecturer takes precedence over an old year embedded in a reused document
+- importing a revised brief replaces the substantive brief/rubric fields, so stale criteria from an older version cannot silently remain
+- the existing minimum-content validation remains in place before a profile can be saved
+- the original assessment-brief file is not stored in Supabase by First Read
+
+DOCX and PDF are supported up to 4 MB.
+
+## Annual assessment library
+
+Assessment profiles form a persistent annual library rather than living only in one browser.
 
 The workflow is now:
 
@@ -47,7 +63,7 @@ The default model remains `gpt-5.6-terra`.
 
 ## Two new Netlify variables
 
-v2 also requires:
+The annual library also requires:
 
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
@@ -130,21 +146,19 @@ The Assessment Library should then load from Supabase.
 - Scope: Functions
 - Context: Production
 
-## Updating an existing v1 GitHub repository
+## Updating the existing GitHub repository
 
-Replace the v1 project files with the contents of this v2 folder, but retain the repository's `.git` folder.
+Replace the project files with the contents of this v3 folder, but retain the repository's `.git` folder. No Supabase schema change and no new environment variables are required when upgrading from v2.
 
 Then run:
 
 ```bash
 git add .
-git commit -m "Add persistent annual assessment library"
+git commit -m "Add assessment brief document import"
 git push
 ```
 
-Netlify should automatically create a new deployment from the push.
-
-Before that deployment is useful, complete the Supabase setup above and add the two new Netlify variables.
+Netlify should automatically create a new deployment from the push. Existing annual assessment profiles remain unchanged.
 
 ## Day-to-day annual workflow
 

@@ -1,12 +1,12 @@
 {
   "name": "first-read-academic",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Lecturer-in-the-loop AI-assisted first review of student submissions with a persistent annual assessment library.",
+  "description": "Lecturer-in-the-loop AI-assisted first review of student submissions with a persistent annual assessment library and assessment-brief import.",
   "scripts": {
     "dev": "netlify dev",
-    "check": "node --check public/app.js && node --check netlify/functions/login.mjs && node --check netlify/functions/session.mjs && node --check netlify/functions/logout.mjs && node --check netlify/functions/analyse.mjs && node --check netlify/functions/assessments.mjs && node --check netlify/functions/_supabase.mjs"
+    "check": "node --check public/app.js && node --check netlify/functions/login.mjs && node --check netlify/functions/session.mjs && node --check netlify/functions/logout.mjs && node --check netlify/functions/analyse.mjs && node --check netlify/functions/assessments.mjs && node --check netlify/functions/_supabase.mjs && node --check netlify/functions/extract-assessment.mjs"
   },
   "dependencies": {
     "openai": "^7.10.0"

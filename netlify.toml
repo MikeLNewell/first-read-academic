@@ -38,3 +38,8 @@
   from = "/api/assessments"
   to = "/.netlify/functions/assessments"
   status = 200
+
+[[redirects]]
+  from = "/api/extract-assessment"
+  to = "/.netlify/functions/extract-assessment"
+  status = 200

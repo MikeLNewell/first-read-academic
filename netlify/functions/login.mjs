@@ -3,8 +3,16 @@ import { createSessionCookie, json, safePasswordMatch } from "./_auth.mjs";
 export async function handler(event) {
   if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
 
-  const expected = process.env.NETLIFY_APP_PASSWORD;
-  if (!expected) return json(500, { error: "NETLIFY_APP_PASSWORD is not configured." });
+  const primaryPassword = process.env.NETLIFY_APP_PASSWORD || "";
+  const developerPassword = process.env.NETLIFY_DEVELOPER_PASSWORD || "";
+
+  const acceptedPasswords = [primaryPassword, developerPassword].filter(Boolean);
+
+  if (acceptedPasswords.length === 0) {
+    return json(500, {
+      error: "No application password is configured. Add NETLIFY_APP_PASSWORD in Netlify."
+    });
+  }
 
   let password = "";
   try {
@@ -13,7 +21,11 @@ export async function handler(event) {
     return json(400, { error: "Invalid request." });
   }
 
-  if (!safePasswordMatch(password, expected)) {
+  const passwordAccepted = acceptedPasswords
+    .map((expected) => safePasswordMatch(password, expected))
+    .some(Boolean);
+
+  if (!passwordAccepted) {
     return json(401, { error: "Incorrect password." });
   }
 

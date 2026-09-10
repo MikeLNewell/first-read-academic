@@ -142,6 +142,7 @@ For each criterion, explain what evidence is present, what is working, and the m
     const response = await client.responses.create({
       model,
       store: false,
+      background: true,
       reasoning: { effort: "medium" },
       input: [
         { role: "developer", content: developerInstructions },
@@ -169,15 +170,18 @@ For each criterion, explain what evidence is present, what is working, and the m
       max_output_tokens: 12000
     });
 
-    if (!response.output_text) return json(502, { error: "The model returned no review text." });
+    if (!response?.id) {
+      return json(502, { error: "The AI service did not return a review job identifier." });
+    }
 
-    const result = JSON.parse(response.output_text);
-    return json(200, {
-      result,
+    return json(202, {
+      status: response.status || "queued",
+      responseId: response.id,
       meta: {
         model,
-        generatedAt: new Date().toISOString(),
-        storedByApp: false
+        startedAt: new Date().toISOString(),
+        storedByApp: false,
+        processingMode: "background"
       }
     });
   } catch (error) {

@@ -449,6 +449,37 @@ function fileToBase64(file) {
   });
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollReview(responseId) {
+  const maxPolls = 180; // about 9 minutes at 3-second intervals
+  for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+    const data = await api(`/api/review-status?id=${encodeURIComponent(responseId)}`, {
+      method: "GET",
+      headers: {}
+    });
+
+    if (data.status === "completed" && data.result) return data;
+
+    const elapsed = (attempt + 1) * 3;
+    if (elapsed < 30) {
+      els.progressText.textContent = "Reading the submission and checking it against the assessment criteria…";
+    } else if (elapsed < 90) {
+      els.progressText.textContent = "The review is still running. Longer submissions can take a little while…";
+    } else {
+      els.progressText.textContent = "Still working through the submission. You can leave this tab open while First Read finishes…";
+    }
+
+    await wait(3000);
+  }
+
+  const error = new Error("The review is taking unusually long. Please try again.");
+  error.status = 504;
+  throw error;
+}
+
 async function runAnalysis() {
   const p = selectedProfile();
   if (!state.file || !p || !profileComplete(p)) return;
@@ -458,9 +489,24 @@ async function runAnalysis() {
   els.progressText.textContent = "Packaging the submission without saving it to the site…";
   try {
     const fileBase64 = await fileToBase64(state.file);
-    els.progressText.textContent = `Checking evidence against ${p.unitCode} · ${p.assessmentName} (${p.academicYear})…`;
-    const data = await api("/api/analyse", { method: "POST", body: JSON.stringify({ fileName: state.file.name, fileBase64, assessment: p }) });
-    state.review = data.result; state.meta = data.meta;
+    els.progressText.textContent = `Starting review against ${p.unitCode} · ${p.assessmentName} (${p.academicYear})…`;
+
+    const started = await api("/api/analyse", {
+      method: "POST",
+      body: JSON.stringify({
+        fileName: state.file.name,
+        fileBase64,
+        assessment: p
+      })
+    });
+
+    if (!started.responseId) throw new Error("The review could not be started.");
+
+    els.progressText.textContent = "Review started. Reading the submission and checking the assessment criteria…";
+    const completed = await pollReview(started.responseId);
+
+    state.review = completed.result;
+    state.meta = completed.meta;
     renderResults();
     els.resultsSection.classList.remove("hidden");
     els.resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });

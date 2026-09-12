@@ -31,7 +31,13 @@ const els = {
   reviewLevelGroup: $("reviewLevelGroup"),
   progressPanel: $("progressPanel"), progressText: $("progressText"), resultsSection: $("resultsSection"), resultsContent: $("resultsContent"),
   copyFeedback: $("copyFeedback"), exportFeedback: $("exportFeedback"), printFeedback: $("printFeedback"),
-  exportProfiles: $("exportProfiles"), importProfiles: $("importProfiles"), toast: $("toast")
+  exportProfiles: $("exportProfiles"), importProfiles: $("importProfiles"), toast: $("toast"),
+  dashboardReviewButton: $("dashboardReviewButton"), dashboardNewAssessmentButton: $("dashboardNewAssessmentButton"),
+  dashboardLibraryButton: $("dashboardLibraryButton"), dashboardQuickReview: $("dashboardQuickReview"),
+  dashboardQuickAssessment: $("dashboardQuickAssessment"), dashboardYearLabel: $("dashboardYearLabel"),
+  dashboardActiveCount: $("dashboardActiveCount"), dashboardReadyCount: $("dashboardReadyCount"),
+  dashboardYearsCount: $("dashboardYearsCount"), dashboardReviewMode: $("dashboardReviewMode"),
+  dashboardAssessmentList: $("dashboardAssessmentList")
 };
 
 const profileFields = [
@@ -113,10 +119,85 @@ function profileComplete(p) {
 function selectedProfile() { return state.profiles.find((p) => p.id === state.selectedProfileId) || null; }
 
 function renderAllProfileViews() {
+  renderDashboard();
   renderReviewSelectors();
   renderLibraryFilters();
   renderProfileGrid();
   updateRunState();
+}
+
+function openReviewForProfile(profileId) {
+  const p = state.profiles.find((profile) => profile.id === profileId);
+  if (!p) return;
+  state.selectedAcademicYear = p.academicYear;
+  state.selectedUnitCode = p.unitCode;
+  state.selectedProfileId = p.id;
+  saveSelection();
+  renderReviewSelectors();
+  updateRunState();
+  navigate("review");
+}
+
+function renderDashboard() {
+  if (!els.dashboardAssessmentList) return;
+
+  const active = state.profiles.filter((p) => !p.isArchived);
+  const ready = active.filter(profileComplete);
+  const academicYears = [...new Set(active.map((p) => p.academicYear).filter(Boolean))];
+  const year = currentAcademicYear();
+
+  els.dashboardYearLabel.textContent = year;
+  els.dashboardActiveCount.textContent = String(active.length);
+  els.dashboardReadyCount.textContent = String(ready.length);
+  els.dashboardYearsCount.textContent = String(academicYears.length);
+  els.dashboardReviewMode.textContent = state.reviewLevel.charAt(0).toUpperCase() + state.reviewLevel.slice(1);
+
+  const yearProfiles = active
+    .filter((p) => p.academicYear === year)
+    .sort((a, b) => a.unitCode.localeCompare(b.unitCode) || a.assessmentName.localeCompare(b.assessmentName))
+    .slice(0, 6);
+
+  els.dashboardAssessmentList.innerHTML = "";
+
+  if (!state.profilesLoaded) {
+    els.dashboardAssessmentList.innerHTML = `<div class="dashboard-empty"><span class="dashboard-empty-icon">…</span><div><strong>Loading your assessment library</strong><p>First Read is checking the annual profiles available to this workspace.</p></div></div>`;
+    return;
+  }
+
+  if (!yearProfiles.length) {
+    els.dashboardAssessmentList.innerHTML = `<div class="dashboard-empty"><span class="dashboard-empty-icon">+</span><div><strong>No ${escapeHtml(year)} assessments yet</strong><p>Import an existing brief to build the current-year library.</p><button type="button" class="text-button dashboard-empty-add">Add first assessment</button></div></div>`;
+    els.dashboardAssessmentList.querySelector(".dashboard-empty-add")?.addEventListener("click", () => openProfileDialog());
+    return;
+  }
+
+  yearProfiles.forEach((p) => {
+    const item = document.createElement("article");
+    item.className = "dashboard-assessment-card";
+    const readyStatus = profileComplete(p);
+    item.innerHTML = `
+      <div class="dashboard-assessment-main">
+        <div class="assessment-glyph" aria-hidden="true"><span>${escapeHtml((p.unitCode || "A").slice(0, 2))}</span></div>
+        <div>
+          <div class="dashboard-assessment-kicker">
+            <span>${escapeHtml(p.unitCode)}</span>
+            <span class="dashboard-status ${readyStatus ? "ready" : "setup"}">${readyStatus ? "Ready" : "Setup required"}</span>
+          </div>
+          <h3>${escapeHtml(p.assessmentName)}</h3>
+          <p>${escapeHtml(p.unitName)}</p>
+          <div class="dashboard-assessment-meta">
+            <span>${escapeHtml(p.academicLevel || "Level not set")}</span>
+            <span>${escapeHtml(p.wordCount || "No word limit")}</span>
+          </div>
+        </div>
+      </div>
+      <div class="dashboard-assessment-actions">
+        <button type="button" class="button secondary review-assessment" ${readyStatus ? "" : "disabled"}>Review</button>
+        <button type="button" class="icon-action edit-assessment" aria-label="Edit ${escapeAttr(p.assessmentName)}">Edit</button>
+      </div>`;
+    item.querySelector(".review-assessment")?.addEventListener("click", () => openReviewForProfile(p.id));
+    item.querySelector(".edit-assessment")?.addEventListener("click", () => openProfileDialog(p.id));
+    els.dashboardAssessmentList.append(item);
+  });
 }
 
 function renderReviewSelectors() {
@@ -222,8 +303,31 @@ function renderProfileGrid() {
 
 function profileCard(p) {
   const card = document.createElement("article");
+  const ready = profileComplete(p);
+  const hasBrief = Boolean(p.assessmentBrief?.trim().length >= 40);
+  const hasRubric = Boolean(p.rubric?.trim().length >= 20);
   card.className = `profile-card${p.isArchived ? " archived" : ""}`;
-  card.innerHTML = `<div><div class="card-kickers"><span class="profile-code">${escapeHtml(p.unitCode || "NO CODE")}</span><span class="version-chip">v${escapeHtml(p.version || 1)}</span></div><h3>${escapeHtml(p.unitName || "Untitled unit")}</h3><p>${escapeHtml(p.assessmentName || "Untitled assessment")}</p></div><footer><span class="setup-status ${profileComplete(p) ? "" : "incomplete"}">${p.isArchived ? "Archived" : profileComplete(p) ? "Ready" : "Setup required"}</span><div class="card-actions"><button class="text-button edit" type="button">Edit</button><button class="text-button duplicate" type="button">Duplicate</button><button class="text-button archive" type="button">${p.isArchived ? "Restore" : "Archive"}</button></div></footer>`;
+  card.innerHTML = `
+    <div class="profile-card-top">
+      <div class="profile-card-icon" aria-hidden="true"><span>${escapeHtml((p.unitCode || "A").slice(0, 2))}</span></div>
+      <div class="profile-card-heading">
+        <div class="card-kickers"><span class="profile-code">${escapeHtml(p.unitCode || "NO CODE")}</span><span class="version-chip">v${escapeHtml(p.version || 1)}</span></div>
+        <h3>${escapeHtml(p.unitName || "Untitled unit")}</h3>
+        <p>${escapeHtml(p.assessmentName || "Untitled assessment")}</p>
+      </div>
+    </div>
+    <div class="profile-card-meta">
+      <span>${escapeHtml(p.academicLevel || "Level not set")}</span>
+      <span>${escapeHtml(p.wordCount || "No word limit")}</span>
+    </div>
+    <div class="profile-readiness" aria-label="Profile completeness">
+      <span class="${hasBrief ? "complete" : ""}">${hasBrief ? "✓" : "○"} Brief</span>
+      <span class="${hasRubric ? "complete" : ""}">${hasRubric ? "✓" : "○"} Rubric</span>
+    </div>
+    <footer>
+      <span class="setup-status ${ready ? "" : "incomplete"}">${p.isArchived ? "Archived" : ready ? "Ready" : "Setup required"}</span>
+      <div class="card-actions"><button class="text-button edit" type="button">Edit</button><button class="text-button duplicate" type="button">Duplicate</button><button class="text-button archive" type="button">${p.isArchived ? "Restore" : "Archive"}</button></div>
+    </footer>`;
   card.querySelector(".edit").addEventListener("click", () => openProfileDialog(p.id));
   card.querySelector(".duplicate").addEventListener("click", () => duplicateProfile(p.id));
   card.querySelector(".archive").addEventListener("click", () => toggleArchive(p.id));
@@ -433,6 +537,7 @@ function setReviewLevel(level) {
   state.reviewLevel = level;
   localStorage.setItem(REVIEW_LEVEL_KEY, level);
   renderReviewLevel();
+  renderDashboard();
 }
 
 function renderReviewLevel() {
@@ -552,28 +657,64 @@ function renderResults() {
   if (!r) return;
   els.resultsContent.innerHTML = "";
 
-  els.resultsContent.append(resultSection("Overall reading", "Edit the model's high-level interpretation before using it.", `<textarea class="feedback-editor" data-path="overall_summary">${escapeHtml(r.overall_summary || "")}</textarea>`));
+  const reviewLevel = (state.meta?.reviewLevel || state.reviewLevel || "quick");
+  const reviewLabel = reviewLevel.charAt(0).toUpperCase() + reviewLevel.slice(1);
+  const summary = document.createElement("section");
+  summary.className = "review-summary";
+  summary.innerHTML = `
+    <div class="review-summary-label"><span class="summary-pulse"></span><div><small>Review complete</small><strong>${escapeHtml(reviewLabel)} first read</strong></div></div>
+    <div class="review-stat"><span>Criteria</span><strong>${(r.criteria || []).length}</strong></div>
+    <div class="review-stat"><span>Priorities</span><strong>${(r.development_priorities || []).length}</strong></div>
+    <div class="review-stat"><span>Manual checks</span><strong>${(r.manual_checks || []).length}</strong></div>`;
+  els.resultsContent.append(summary);
 
-  const criteriaHtml = (r.criteria || []).map((c, i) => `<div class="criterion-card"><div class="criterion-top"><div class="criterion-name">${escapeHtml(c.criterion)}</div><span class="judgement">${escapeHtml(c.judgement)} · ${escapeHtml(c.priority)} priority</span></div><div class="criterion-fields"><label><span class="field-label">Evidence identified</span><textarea data-path="criteria.${i}.evidence">${escapeHtml(c.evidence)}</textarea></label><label><span class="field-label">Developmental feedback</span><textarea data-path="criteria.${i}.feedback">${escapeHtml(c.feedback)}</textarea></label></div></div>`).join("");
-  els.resultsContent.append(resultSection("Criterion-by-criterion", "Evidence and feedback are separated so that you can inspect the basis of each comment.", `<div class="criteria-list">${criteriaHtml || "<p>No criteria returned.</p>"}</div>`));
+  els.resultsContent.append(resultSection(
+    "Overall reading",
+    "Your editable high-level interpretation of the submission.",
+    `<textarea class="feedback-editor" data-path="overall_summary">${escapeHtml(r.overall_summary || "")}</textarea>`,
+    "featured-result"
+  ));
+
+  const priorityHtml = (r.development_priorities || []).map((p, i) => `<div class="priority-card"><div class="priority-index">${i + 1}</div><div class="priority-fields"><label><span class="field-label">Priority</span><input data-path="development_priorities.${i}.priority" value="${escapeAttr(p.priority)}"></label><label><span class="field-label">Why it matters</span><textarea data-path="development_priorities.${i}.why_it_matters">${escapeHtml(p.why_it_matters)}</textarea></label><label><span class="field-label">Suggested action</span><textarea data-path="development_priorities.${i}.suggested_action">${escapeHtml(p.suggested_action)}</textarea></label></div></div>`).join("");
+  els.resultsContent.append(resultSection(
+    "Development priorities",
+    "The changes most likely to improve the work. These deserve your attention first.",
+    `<div class="priority-list">${priorityHtml || "<p>No priorities returned.</p>"}</div>`,
+    "priority-result"
+  ));
+
+  const criteriaHtml = (r.criteria || []).map((c, i) => `<div class="criterion-card"><div class="criterion-top"><div><span class="criterion-number">${String(i + 1).padStart(2, "0")}</span><div class="criterion-name">${escapeHtml(c.criterion)}</div></div><span class="judgement">${escapeHtml(c.judgement)} · ${escapeHtml(c.priority)} priority</span></div><div class="criterion-fields"><label><span class="field-label">Evidence identified</span><textarea data-path="criteria.${i}.evidence">${escapeHtml(c.evidence)}</textarea></label><label><span class="field-label">Developmental feedback</span><textarea data-path="criteria.${i}.feedback">${escapeHtml(c.feedback)}</textarea></label></div></div>`).join("");
+  els.resultsContent.append(resultSection(
+    "Criterion-by-criterion",
+    "Inspect the evidence behind each comment before deciding what should reach the student.",
+    `<div class="criteria-list">${criteriaHtml || "<p>No criteria returned.</p>"}</div>`,
+    "criteria-result"
+  ));
+
+  const supportingGrid = document.createElement("div");
+  supportingGrid.className = "supporting-results-grid";
 
   const strengthHtml = (r.strengths || []).map((s, i) => `<div class="bullet-editor"><span>+</span><textarea data-path="strengths.${i}">${escapeHtml(s)}</textarea></div>`).join("");
-  els.resultsContent.append(resultSection("What is working", "Candidate strengths identified from the submission.", `<div class="bullet-editors">${strengthHtml || "<p>No strengths returned.</p>"}</div>`));
-
-  const priorityHtml = (r.development_priorities || []).map((p, i) => `<div class="priority-card"><label><span class="field-label">Priority</span><input data-path="development_priorities.${i}.priority" value="${escapeAttr(p.priority)}"></label><label><span class="field-label">Why it matters</span><textarea data-path="development_priorities.${i}.why_it_matters">${escapeHtml(p.why_it_matters)}</textarea></label><label><span class="field-label">Suggested action</span><textarea data-path="development_priorities.${i}.suggested_action">${escapeHtml(p.suggested_action)}</textarea></label></div>`).join("");
-  els.resultsContent.append(resultSection("Development priorities", "The small number of changes most likely to improve the work.", `<div class="priority-list">${priorityHtml || "<p>No priorities returned.</p>"}</div>`));
+  supportingGrid.append(resultSection("What is working", "Candidate strengths identified from the submission.", `<div class="bullet-editors">${strengthHtml || "<p>No strengths returned.</p>"}</div>`, "compact-result"));
 
   const checksHtml = (r.manual_checks || []).map((m, i) => `<div class="manual-card"><label><span class="field-label">Category</span><input data-path="manual_checks.${i}.category" value="${escapeAttr(m.category)}"></label><label><span class="field-label">Observation</span><textarea data-path="manual_checks.${i}.observation">${escapeHtml(m.observation)}</textarea></label><label><span class="field-label">Lecturer action</span><textarea data-path="manual_checks.${i}.action">${escapeHtml(m.action)}</textarea></label></div>`).join("");
-  els.resultsContent.append(resultSection("Manual checks", "Items the model thinks should be verified rather than asserted.", `<div>${checksHtml || "<p>No manual checks were flagged.</p>"}</div>`));
+  supportingGrid.append(resultSection("Manual checks", "Items to verify rather than accept at face value.", `<div>${checksHtml || "<p>No manual checks were flagged.</p>"}</div>`, "compact-result"));
+  els.resultsContent.append(supportingGrid);
 
-  els.resultsContent.append(resultSection("Student-facing draft", "This is the text intended for you to edit, copy or export after review.", `<textarea class="feedback-editor student-feedback-editor" data-path="student_feedback">${escapeHtml(r.student_feedback || "")}</textarea>`));
+  els.resultsContent.append(resultSection(
+    "Student-facing draft",
+    "The final working area. Edit this before copying or exporting.",
+    `<div class="student-draft-header"><span>Editable draft</span><span>Lecturer approval required</span></div><textarea class="feedback-editor student-feedback-editor" data-path="student_feedback">${escapeHtml(r.student_feedback || "")}</textarea>`,
+    "student-draft-result"
+  ));
 
   els.resultsContent.querySelectorAll("[data-path]").forEach((el) => el.addEventListener("input", () => setByPath(state.review, el.dataset.path, el.value)));
 }
 
-function resultSection(title, intro, html) {
-  const section = document.createElement("section"); section.className = "panel result-section";
-  section.innerHTML = `<h3>${title}</h3><p class="section-intro">${intro}</p>${html}`;
+function resultSection(title, intro, html, extraClass = "") {
+  const section = document.createElement("section");
+  section.className = `panel result-section ${extraClass}`.trim();
+  section.innerHTML = `<div class="result-section-head"><h3>${title}</h3><p class="section-intro">${intro}</p></div>${html}`;
   return section;
 }
 
@@ -639,6 +780,11 @@ els.loginForm.addEventListener("submit", async (event) => {
 });
 els.logoutButton.addEventListener("click", async () => { try { await api("/api/logout", { method: "POST", body: "{}" }); } catch {} state.profilesLoaded = false; showLogin(); });
 document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.screen)));
+els.dashboardReviewButton?.addEventListener("click", () => navigate("review"));
+els.dashboardQuickReview?.addEventListener("click", () => navigate("review"));
+els.dashboardNewAssessmentButton?.addEventListener("click", () => openProfileDialog());
+els.dashboardQuickAssessment?.addEventListener("click", () => openProfileDialog());
+els.dashboardLibraryButton?.addEventListener("click", () => navigate("library"));
 els.goLibraryButton.addEventListener("click", () => navigate("library"));
 els.newProfileButton.addEventListener("click", () => openProfileDialog());
 els.closeDialog.addEventListener("click", closeProfileDialog); els.cancelProfile.addEventListener("click", closeProfileDialog);

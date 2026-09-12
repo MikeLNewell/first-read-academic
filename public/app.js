@@ -15,7 +15,9 @@ const state = {
   file: null,
   review: null,
   meta: null,
-  reviewLevel: "quick"
+  reviewLevel: "quick",
+  preflightConfirmed: false,
+  approvalConfirmed: false
 };
 
 const $ = (id) => document.getElementById(id);
@@ -37,7 +39,11 @@ const els = {
   dashboardQuickAssessment: $("dashboardQuickAssessment"), dashboardYearLabel: $("dashboardYearLabel"),
   dashboardActiveCount: $("dashboardActiveCount"), dashboardReadyCount: $("dashboardReadyCount"),
   dashboardYearsCount: $("dashboardYearsCount"), dashboardReviewMode: $("dashboardReviewMode"),
-  dashboardAssessmentList: $("dashboardAssessmentList")
+  dashboardAssessmentList: $("dashboardAssessmentList"),
+  preflightConfirm: $("preflightConfirm"), identifierNotice: $("identifierNotice"),
+  approvalConfirm: $("approvalConfirm"), disclosureText: $("disclosureText"), copyDisclosure: $("copyDisclosure"),
+  verifyProfile: $("verifyProfile"), verificationPanel: $("verificationPanel"),
+  verificationTitle: $("verificationTitle"), verificationCopy: $("verificationCopy")
 };
 
 const profileFields = [
@@ -116,6 +122,21 @@ function profileComplete(p) {
   return Boolean(p?.unitCode?.trim() && p?.unitName?.trim() && p?.assessmentName?.trim() && p?.assessmentBrief?.trim().length >= 40 && p?.rubric?.trim().length >= 20);
 }
 
+function profileReady(p) {
+  return Boolean(profileComplete(p) && p?.isVerified && !p?.isArchived);
+}
+
+function verificationLabel(p) {
+  if (!profileComplete(p)) return "Setup required";
+  return p?.isVerified ? "Verified" : "Verification required";
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  try { return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+  catch { return ""; }
+}
+
 function selectedProfile() { return state.profiles.find((p) => p.id === state.selectedProfileId) || null; }
 
 function renderAllProfileViews() {
@@ -142,7 +163,7 @@ function renderDashboard() {
   if (!els.dashboardAssessmentList) return;
 
   const active = state.profiles.filter((p) => !p.isArchived);
-  const ready = active.filter(profileComplete);
+  const ready = active.filter(profileReady);
   const academicYears = [...new Set(active.map((p) => p.academicYear).filter(Boolean))];
   const year = currentAcademicYear();
 
@@ -173,14 +194,14 @@ function renderDashboard() {
   yearProfiles.forEach((p) => {
     const item = document.createElement("article");
     item.className = "dashboard-assessment-card";
-    const readyStatus = profileComplete(p);
+    const readyStatus = profileReady(p);
     item.innerHTML = `
       <div class="dashboard-assessment-main">
         <div class="assessment-glyph" aria-hidden="true"><span>${escapeHtml((p.unitCode || "A").slice(0, 2))}</span></div>
         <div>
           <div class="dashboard-assessment-kicker">
             <span>${escapeHtml(p.unitCode)}</span>
-            <span class="dashboard-status ${readyStatus ? "ready" : "setup"}">${readyStatus ? "Ready" : "Setup required"}</span>
+            <span class="dashboard-status ${readyStatus ? "ready" : "setup"}">${readyStatus ? "Verified" : verificationLabel(p)}</span>
           </div>
           <h3>${escapeHtml(p.assessmentName)}</h3>
           <p>${escapeHtml(p.unitName)}</p>
@@ -240,7 +261,7 @@ function renderReviewSelectors() {
     .filter((p) => p.unitCode === state.selectedUnitCode)
     .sort((a, b) => a.assessmentName.localeCompare(b.assessmentName) || (b.version || 1) - (a.version || 1));
   els.profileSelect.innerHTML = "";
-  assessments.forEach((p) => addOption(els.profileSelect, p.id, `${p.assessmentName} · v${p.version || 1}${profileComplete(p) ? "" : " · setup required"}`));
+  assessments.forEach((p) => addOption(els.profileSelect, p.id, `${p.assessmentName} · v${p.version || 1}${profileReady(p) ? " · verified" : ` · ${verificationLabel(p).toLowerCase()}`}`));
   if (!assessments.some((p) => p.id === state.selectedProfileId)) state.selectedProfileId = assessments[0]?.id || null;
   els.profileSelect.disabled = !assessments.length;
   if (state.selectedProfileId) els.profileSelect.value = state.selectedProfileId;
@@ -256,9 +277,10 @@ function renderProfileSummary() {
     els.profileSummary.textContent = "Create or select an assessment profile before reviewing a submission.";
     return;
   }
-  const status = profileComplete(p) ? "Ready to use" : "Setup required: add a substantive brief and marking criteria";
-  els.profileSummary.className = "profile-summary";
-  els.profileSummary.innerHTML = `<strong>${escapeHtml(p.unitName)}</strong><br>${escapeHtml(p.assessmentName)}<div class="profile-meta"><span class="mini-chip">${escapeHtml(p.academicYear)}</span><span class="mini-chip">v${escapeHtml(p.version || 1)}</span><span class="mini-chip">${escapeHtml(p.academicLevel || "Level not set")}</span><span class="mini-chip">${escapeHtml(p.wordCount || "No word limit set")}</span><span class="mini-chip">${status}</span></div>`;
+  const status = verificationLabel(p);
+  const verified = p.isVerified && p.verifiedAt ? ` · checked ${formatDateTime(p.verifiedAt)}` : "";
+  els.profileSummary.className = `profile-summary ${p.isVerified ? "verified-profile" : "unverified-profile"}`;
+  els.profileSummary.innerHTML = `<strong>${escapeHtml(p.unitName)}</strong><br>${escapeHtml(p.assessmentName)}<div class="profile-meta"><span class="mini-chip">${escapeHtml(p.academicYear)}</span><span class="mini-chip">v${escapeHtml(p.version || 1)}</span><span class="mini-chip">${escapeHtml(p.academicLevel || "Level not set")}</span><span class="mini-chip">${escapeHtml(p.wordCount || "No word limit set")}</span><span class="mini-chip ${p.isVerified ? "verified-chip" : "verification-chip"}">${escapeHtml(status + verified)}</span></div>`;
 }
 
 function renderLibraryFilters() {
@@ -323,11 +345,13 @@ function profileCard(p) {
     <div class="profile-readiness" aria-label="Profile completeness">
       <span class="${hasBrief ? "complete" : ""}">${hasBrief ? "✓" : "○"} Brief</span>
       <span class="${hasRubric ? "complete" : ""}">${hasRubric ? "✓" : "○"} Rubric</span>
+      <span class="${p.isVerified ? "complete" : ""}">${p.isVerified ? "✓" : "○"} Verified</span>
     </div>
     <footer>
-      <span class="setup-status ${ready ? "" : "incomplete"}">${p.isArchived ? "Archived" : ready ? "Ready" : "Setup required"}</span>
-      <div class="card-actions"><button class="text-button edit" type="button">Edit</button><button class="text-button duplicate" type="button">Duplicate</button><button class="text-button archive" type="button">${p.isArchived ? "Restore" : "Archive"}</button></div>
+      <span class="setup-status ${profileReady(p) ? "" : "incomplete"}">${p.isArchived ? "Archived" : verificationLabel(p)}</span>
+      <div class="card-actions">${profileComplete(p) && !p.isVerified && !p.isArchived ? '<button class="text-button verify-card" type="button">Verify</button>' : ""}<button class="text-button edit" type="button">Edit</button><button class="text-button duplicate" type="button">Duplicate</button><button class="text-button archive" type="button">${p.isArchived ? "Restore" : "Archive"}</button></div>
     </footer>`;
+  card.querySelector(".verify-card")?.addEventListener("click", () => verifyAssessmentProfile(p.id));
   card.querySelector(".edit").addEventListener("click", () => openProfileDialog(p.id));
   card.querySelector(".duplicate").addEventListener("click", () => duplicateProfile(p.id));
   card.querySelector(".archive").addEventListener("click", () => toggleArchive(p.id));
@@ -347,9 +371,59 @@ function openProfileDialog(id = null) {
   $("isArchived").checked = Boolean(p.isArchived);
   els.dialogTitle.textContent = id ? "Edit assessment profile" : "New assessment profile";
   els.deleteProfile.classList.toggle("hidden", !id);
+  renderVerificationPanel(p, Boolean(id));
   resetBriefImportStatus();
   if (els.assessmentBriefFile) els.assessmentBriefFile.value = "";
   els.profileDialog.showModal();
+}
+
+function renderVerificationPanel(profile, existing) {
+  if (!els.verifyProfile) return;
+  if (!existing) {
+    els.verificationTitle.textContent = "Save the profile before verification";
+    els.verificationCopy.textContent = "Verification is an explicit lecturer check performed after the assessment profile has been saved.";
+    els.verifyProfile.disabled = true;
+    els.verifyProfile.textContent = "Verify assessment profile";
+    return;
+  }
+  if (!profileComplete(profile)) {
+    els.verificationTitle.textContent = "Complete the brief and rubric first";
+    els.verificationCopy.textContent = "Verification becomes available once the assessment profile contains the required assessment brief and marking criteria.";
+    els.verifyProfile.disabled = true;
+    els.verifyProfile.textContent = "Verify assessment profile";
+    return;
+  }
+  if (profile.isVerified) {
+    els.verificationTitle.textContent = "Assessment profile verified";
+    els.verificationCopy.textContent = `Verified ${formatDateTime(profile.verifiedAt) || "for live review"}. Saving substantive edits will revoke this status until the revised profile is checked again.`;
+    els.verifyProfile.disabled = true;
+    els.verifyProfile.textContent = "Verified";
+    return;
+  }
+  els.verificationTitle.textContent = "Lecturer verification required";
+  els.verificationCopy.textContent = "Confirm that the brief, learning outcomes, rubric and instructions accurately represent what students were given. Only verified profiles can be used for a live review.";
+  els.verifyProfile.disabled = false;
+  els.verifyProfile.textContent = "Verify assessment profile";
+}
+
+async function verifyAssessmentProfile(id) {
+  const profile = state.profiles.find((p) => p.id === id);
+  if (!profile || !profileComplete(profile)) return showToast("Complete and save the assessment profile before verification.");
+  const confirmed = confirm("Verify this assessment profile?\n\nConfirm that you have checked the brief, learning outcomes, rubric and instructions against the assessment students received. Any later edits will require re-verification.");
+  if (!confirmed) return;
+  try {
+    const data = await api(`/api/assessments?id=${encodeURIComponent(id)}&action=verify`, {
+      method: "PATCH",
+      body: JSON.stringify({})
+    });
+    state.profiles = state.profiles.map((p) => p.id === id ? data.profile : p);
+    renderAllProfileViews();
+    if (els.profileDialog.open) renderVerificationPanel(data.profile, true);
+    showToast("Assessment profile verified");
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    else showToast(error.message || "Assessment profile could not be verified");
+  }
 }
 
 function closeProfileDialog() {
@@ -448,7 +522,7 @@ async function handleProfileSave(event) {
     state.selectedAcademicYear = data.profile.academicYear;
     state.selectedUnitCode = data.profile.unitCode;
     state.selectedProfileId = data.profile.isArchived ? null : data.profile.id;
-    renderAllProfileViews(); closeProfileDialog(); showToast("Assessment profile saved");
+    renderAllProfileViews(); closeProfileDialog(); showToast(existingId ? "Assessment saved. Verification is required after edits." : "Assessment profile saved. Verify it before live review.");
   } catch (error) {
     if (error.status === 401) showLogin();
     else showToast(error.message || "Assessment profile could not be saved");
@@ -473,7 +547,7 @@ async function duplicateProfile(id) {
   const targetYear = prompt("Duplicate this assessment into which academic year?", suggested);
   if (targetYear === null) return;
   if (!/^\d{4}\/\d{2}$/.test(targetYear.trim())) return showToast("Use an academic year such as 2027/28");
-  const copy = { ...source, id: undefined, academicYear: targetYear.trim(), version: 1, isArchived: false, sourceProfileId: source.id };
+  const copy = { ...source, id: undefined, academicYear: targetYear.trim(), version: 1, isArchived: false, isVerified: false, verifiedAt: null, sourceProfileId: source.id };
   try {
     const data = await api("/api/assessments", { method: "POST", body: JSON.stringify(copy) });
     state.profiles.push(data.profile);
@@ -489,10 +563,14 @@ async function toggleArchive(id) {
   const profile = state.profiles.find((p) => p.id === id);
   if (!profile) return;
   try {
-    const data = await api(`/api/assessments?id=${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ ...profile, isArchived: !profile.isArchived }) });
+    const data = await api(`/api/assessments?id=${encodeURIComponent(id)}&action=status`, {
+      method: "PATCH",
+      body: JSON.stringify({ isArchived: !profile.isArchived })
+    });
     state.profiles = state.profiles.map((p) => p.id === id ? data.profile : p);
     if (data.profile.isArchived && state.selectedProfileId === id) state.selectedProfileId = null;
-    renderAllProfileViews(); showToast(data.profile.isArchived ? "Assessment archived" : "Assessment restored");
+    renderAllProfileViews();
+    showToast(data.profile.isArchived ? "Assessment archived" : "Assessment restored");
   } catch (error) { showToast(error.message || "Profile could not be updated"); }
 }
 
@@ -549,26 +627,64 @@ function renderReviewLevel() {
   });
 }
 
+function filenameIdentifierRisk(name = "") {
+  const findings = [];
+  if (/@/.test(name)) findings.push("an email-like identifier");
+  if (/\b\d{6,10}\b/.test(name)) findings.push("a possible student number");
+  if (/student[_\s-]*\d+/i.test(name)) findings.push("a student identifier");
+  return findings;
+}
+
+function resetPreflight() {
+  state.preflightConfirmed = false;
+  if (els.preflightConfirm) els.preflightConfirm.checked = false;
+}
+
 function setFile(file) {
   if (!file) return;
   const ext = file.name.toLowerCase().split(".").pop();
   if (!["pdf","docx","txt"].includes(ext)) { showToast("Please choose a PDF, DOCX or TXT file"); return; }
-  if (file.size > 4 * 1024 * 1024) { showToast("This MVP accepts files up to 4 MB"); return; }
+  if (file.size > 4 * 1024 * 1024) { showToast("This version accepts files up to 4 MB"); return; }
   state.file = file;
+  resetPreflight();
+  resetApproval();
   els.fileCard.classList.remove("hidden");
-  els.fileCard.innerHTML = `<div class="file-info"><span class="file-name">${escapeHtml(file.name)}</span><span class="file-size">${formatBytes(file.size)} · local file, not stored by the app</span></div><button class="text-button" id="removeFile" type="button">Remove</button>`;
-  $("removeFile").addEventListener("click", () => { state.file = null; els.submissionFile.value = ""; els.fileCard.classList.add("hidden"); updateRunState(); });
+  els.fileCard.innerHTML = `<div class="file-info"><span class="file-name">${escapeHtml(file.name)}</span><span class="file-size">${formatBytes(file.size)} · original filename is replaced before model processing</span></div><button class="text-button" id="removeFile" type="button">Remove</button>`;
+
+  const risks = filenameIdentifierRisk(file.name);
+  if (els.identifierNotice) {
+    els.identifierNotice.classList.remove("hidden", "warning", "ok");
+    if (risks.length) {
+      els.identifierNotice.classList.add("warning");
+      els.identifierNotice.innerHTML = `<strong>Check identifiers before review.</strong> The filename appears to contain ${escapeHtml(risks.join(" and "))}. First Read replaces the filename before model processing, but you should also check the document body for unnecessary personal information.`;
+    } else {
+      els.identifierNotice.classList.add("ok");
+      els.identifierNotice.innerHTML = `<strong>Privacy pre-flight:</strong> no obvious identifier was detected in the filename. This does not inspect the document body, so please check the submission itself before confirming.`;
+    }
+  }
+
+  $("removeFile").addEventListener("click", () => {
+    state.file = null;
+    els.submissionFile.value = "";
+    els.fileCard.classList.add("hidden");
+    els.identifierNotice?.classList.add("hidden");
+    resetPreflight();
+    resetApproval();
+    updateRunState();
+  });
   updateRunState();
 }
 
 function updateRunState() {
   const p = selectedProfile();
-  const ready = Boolean(state.file && p && profileComplete(p) && !p.isArchived);
+  const ready = Boolean(state.file && p && profileReady(p) && state.preflightConfirmed);
   els.analyseButton.disabled = !ready;
-  if (!p) els.runHint.textContent = "Select an academic year, unit and assessment first.";
+  if (!p) els.runHint.textContent = "Select an academic year, unit and verified assessment first.";
   else if (!profileComplete(p)) els.runHint.textContent = "Finish setting up the selected assessment profile.";
-  else if (!state.file) els.runHint.textContent = `${p.academicYear} · ${p.unitCode} · ${p.assessmentName} is ready. Add a student submission.`;
-  else els.runHint.textContent = "Assessment and submission ready. The model will not generate a mark.";
+  else if (!p.isVerified) els.runHint.textContent = "This assessment profile must be verified by a lecturer before it can be used.";
+  else if (!state.file) els.runHint.textContent = `${p.academicYear} · ${p.unitCode} · ${p.assessmentName} is verified. Add a student submission.`;
+  else if (!state.preflightConfirmed) els.runHint.textContent = "Complete the privacy and responsibility check before starting the review.";
+  else els.runHint.textContent = "Verified assessment and submission ready. The model will not generate a mark or misconduct decision.";
 }
 
 function fileToBase64(file) {
@@ -613,7 +729,7 @@ async function pollReview(responseId) {
 
 async function runAnalysis() {
   const p = selectedProfile();
-  if (!state.file || !p || !profileComplete(p)) return;
+  if (!state.file || !p || !profileReady(p) || !state.preflightConfirmed) return;
   els.analyseButton.disabled = true;
   els.progressPanel.classList.remove("hidden");
   els.resultsSection.classList.add("hidden");
@@ -668,6 +784,17 @@ function renderResults() {
     <div class="review-stat"><span>Manual checks</span><strong>${(r.manual_checks || []).length}</strong></div>`;
   els.resultsContent.append(summary);
 
+  const profile = selectedProfile();
+  const audit = document.createElement("section");
+  audit.className = "review-audit-strip";
+  audit.innerHTML = `
+    <div><span>Assessment</span><strong>${escapeHtml(profile?.unitCode || "")} · v${escapeHtml(profile?.version || 1)}</strong></div>
+    <div><span>Profile status</span><strong>${profile?.isVerified ? "Verified" : "Unverified"}</strong></div>
+    <div><span>Verified</span><strong>${escapeHtml(formatDateTime(profile?.verifiedAt) || "Not recorded")}</strong></div>
+    <div><span>Model</span><strong>${escapeHtml(state.meta?.model || "Not recorded")}</strong></div>
+    <div><span>Review engine</span><strong>Trust Layer v1.0</strong></div>`;
+  els.resultsContent.append(audit);
+
   els.resultsContent.append(resultSection(
     "Overall reading",
     "Your editable high-level interpretation of the submission.",
@@ -683,7 +810,7 @@ function renderResults() {
     "priority-result"
   ));
 
-  const criteriaHtml = (r.criteria || []).map((c, i) => `<div class="criterion-card"><div class="criterion-top"><div><span class="criterion-number">${String(i + 1).padStart(2, "0")}</span><div class="criterion-name">${escapeHtml(c.criterion)}</div></div><span class="judgement">${escapeHtml(c.judgement)} · ${escapeHtml(c.priority)} priority</span></div><div class="criterion-fields"><label><span class="field-label">Evidence identified</span><textarea data-path="criteria.${i}.evidence">${escapeHtml(c.evidence)}</textarea></label><label><span class="field-label">Developmental feedback</span><textarea data-path="criteria.${i}.feedback">${escapeHtml(c.feedback)}</textarea></label></div></div>`).join("");
+  const criteriaHtml = (r.criteria || []).map((c, i) => `<div class="criterion-card"><div class="criterion-top"><div><span class="criterion-number">${String(i + 1).padStart(2, "0")}</span><div class="criterion-name">${escapeHtml(c.criterion)}</div></div><span class="judgement">${escapeHtml(c.judgement)} · ${escapeHtml(c.priority)} priority</span></div><div class="criterion-provenance"><span class="verification-badge ${String(c.verification_status || "").toLowerCase().replace(/\s+/g, "-")}">${escapeHtml(c.verification_status || "Check manually")}</span><span>${escapeHtml(c.evidence_location || "Location not specified")}</span></div><div class="criterion-fields"><label><span class="field-label">Evidence identified</span><textarea data-path="criteria.${i}.evidence">${escapeHtml(c.evidence)}</textarea></label><label><span class="field-label">Developmental feedback</span><textarea data-path="criteria.${i}.feedback">${escapeHtml(c.feedback)}</textarea></label></div></div>`).join("");
   els.resultsContent.append(resultSection(
     "Criterion-by-criterion",
     "Inspect the evidence behind each comment before deciding what should reach the student.",
@@ -708,7 +835,14 @@ function renderResults() {
     "student-draft-result"
   ));
 
-  els.resultsContent.querySelectorAll("[data-path]").forEach((el) => el.addEventListener("input", () => setByPath(state.review, el.dataset.path, el.value)));
+  resetApproval();
+  els.resultsContent.querySelectorAll("[data-path]").forEach((el) => el.addEventListener("input", () => {
+    setByPath(state.review, el.dataset.path, el.value);
+    if (state.approvalConfirmed) {
+      resetApproval();
+      showToast("Approval removed because the draft was edited");
+    }
+  }));
 }
 
 function resultSection(title, intro, html, extraClass = "") {
@@ -724,10 +858,73 @@ function setByPath(obj, path, value) {
   target[parts.at(-1)] = value;
 }
 
+function resetApproval() {
+  state.approvalConfirmed = false;
+  if (els.approvalConfirm) els.approvalConfirm.checked = false;
+  [els.copyFeedback, els.exportFeedback, els.printFeedback, els.copyDisclosure].forEach((button) => {
+    if (button) button.disabled = true;
+  });
+}
+
+function setApproval(approved) {
+  state.approvalConfirmed = Boolean(approved && state.review);
+  [els.copyFeedback, els.exportFeedback, els.printFeedback, els.copyDisclosure].forEach((button) => {
+    if (button) button.disabled = !state.approvalConfirmed;
+  });
+}
+
+function studentDisclosure() {
+  return String(els.disclosureText?.value || "").trim();
+}
+
 function compiledFeedback() {
-  const p = selectedProfile(); const r = state.review;
+  const p = selectedProfile();
+  const r = state.review;
   if (!r) return "";
-  return `${p?.academicYear || ""}\n${p?.unitCode || ""} ${p?.unitName || ""}\n${p?.assessmentName || ""}\n\nSTUDENT FEEDBACK\n\n${r.student_feedback || ""}\n\nLECTURER WORKING NOTES\n\nOverall reading\n${r.overall_summary || ""}\n\nDevelopment priorities\n${(r.development_priorities || []).map((x, i) => `${i+1}. ${x.priority}\nWhy it matters: ${x.why_it_matters}\nSuggested action: ${x.suggested_action}`).join("\n\n")}\n\nManual checks\n${(r.manual_checks || []).map((x, i) => `${i+1}. ${x.category}: ${x.observation}\nAction: ${x.action}`).join("\n\n")}\n\nGenerated as an AI-assisted draft for lecturer review. No automated mark or grade has been produced.`;
+  return `${p?.academicYear || ""}
+${p?.unitCode || ""} ${p?.unitName || ""}
+${p?.assessmentName || ""} · profile v${p?.version || 1}
+
+STUDENT FEEDBACK
+
+${r.student_feedback || ""}
+
+TRANSPARENCY STATEMENT
+
+${studentDisclosure()}
+
+LECTURER WORKING NOTES
+
+Overall reading
+${r.overall_summary || ""}
+
+Development priorities
+${(r.development_priorities || []).map((x, i) => `${i+1}. ${x.priority}
+Why it matters: ${x.why_it_matters}
+Suggested action: ${x.suggested_action}`).join("\n\n")}
+
+Criterion evidence
+${(r.criteria || []).map((x, i) => `${i+1}. ${x.criterion}
+Status: ${x.verification_status || "Check manually"}
+Location: ${x.evidence_location || "Not specified"}
+Evidence: ${x.evidence}
+Feedback: ${x.feedback}`).join("\n\n")}
+
+Manual checks
+${(r.manual_checks || []).map((x, i) => `${i+1}. ${x.category}: ${x.observation}
+Action: ${x.action}`).join("\n\n")}
+
+REVIEW AUDIT
+Review level: ${state.meta?.reviewLevel || state.reviewLevel}
+Model: ${state.meta?.model || "not recorded"}
+Assessment profile: ${p?.id || ""} · v${p?.version || 1}
+Assessment verified: ${p?.verifiedAt || "not recorded"}
+Generated: ${state.meta?.generatedAt || state.meta?.startedAt || new Date().toISOString()}
+Review engine: First Read Trust Layer v1.0
+
+Approved by lecturer before export: ${state.approvalConfirmed ? "Yes" : "No"}
+
+Generated as AI-assisted decision-support. No automated mark, classification or academic misconduct decision has been produced.`; 
 }
 
 function downloadText(name, content, type = "text/plain") {
@@ -789,6 +986,10 @@ els.goLibraryButton.addEventListener("click", () => navigate("library"));
 els.newProfileButton.addEventListener("click", () => openProfileDialog());
 els.closeDialog.addEventListener("click", closeProfileDialog); els.cancelProfile.addEventListener("click", closeProfileDialog);
 els.profileForm.addEventListener("submit", handleProfileSave); els.deleteProfile.addEventListener("click", deleteCurrentProfile);
+els.verifyProfile?.addEventListener("click", () => {
+  const id = $("profileId").value;
+  if (id) verifyAssessmentProfile(id);
+});
 if (els.assessmentBriefFile) els.assessmentBriefFile.addEventListener("change", () => importAssessmentBrief(els.assessmentBriefFile.files[0]));
 els.academicYearSelect.addEventListener("change", () => { state.selectedAcademicYear = els.academicYearSelect.value || null; state.selectedUnitCode = null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
 els.unitSelect.addEventListener("change", () => { state.selectedUnitCode = els.unitSelect.value || null; state.selectedProfileId = null; renderReviewSelectors(); updateRunState(); });
@@ -797,6 +998,10 @@ els.libraryYearFilter.addEventListener("change", () => { state.libraryYear = els
 els.libraryStatusFilter.addEventListener("change", () => { state.libraryStatus = els.libraryStatusFilter.value; renderProfileGrid(); });
 els.migrateLegacyProfiles.addEventListener("click", migrateLegacy);
 els.submissionFile.addEventListener("change", () => setFile(els.submissionFile.files[0]));
+els.preflightConfirm?.addEventListener("change", () => {
+  state.preflightConfirmed = Boolean(els.preflightConfirm.checked);
+  updateRunState();
+});
 ["dragenter","dragover"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.add("dragover"); }));
 ["dragleave","drop"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.remove("dragover"); }));
 els.dropZone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
@@ -807,9 +1012,26 @@ if (els.reviewLevelGroup) {
   });
 }
 els.analyseButton.addEventListener("click", runAnalysis);
-els.copyFeedback.addEventListener("click", async () => { if (!state.review) return; await navigator.clipboard.writeText(state.review.student_feedback || ""); showToast("Student feedback copied"); });
-els.exportFeedback.addEventListener("click", () => { if (!state.review) return; const p = selectedProfile(); downloadText(`${p?.unitCode || "assessment"}-${(p?.academicYear || "").replace("/", "-")}-first-read-feedback.txt`, compiledFeedback()); });
-els.printFeedback.addEventListener("click", () => window.print());
+els.approvalConfirm?.addEventListener("change", () => setApproval(els.approvalConfirm.checked));
+els.copyFeedback.addEventListener("click", async () => {
+  if (!state.review || !state.approvalConfirmed) return showToast("Approve the reviewed feedback before copying it");
+  await navigator.clipboard.writeText(state.review.student_feedback || "");
+  showToast("Approved student feedback copied");
+});
+els.exportFeedback.addEventListener("click", () => {
+  if (!state.review || !state.approvalConfirmed) return showToast("Approve the reviewed feedback before exporting it");
+  const p = selectedProfile();
+  downloadText(`${p?.unitCode || "assessment"}-${(p?.academicYear || "").replace("/", "-")}-first-read-feedback.txt`, compiledFeedback());
+});
+els.printFeedback.addEventListener("click", () => {
+  if (!state.review || !state.approvalConfirmed) return showToast("Approve the reviewed feedback before printing it");
+  window.print();
+});
+els.copyDisclosure?.addEventListener("click", async () => {
+  if (!state.approvalConfirmed) return showToast("Approve the reviewed feedback before copying the disclosure");
+  await navigator.clipboard.writeText(studentDisclosure());
+  showToast("Disclosure statement copied");
+});
 els.exportProfiles.addEventListener("click", exportProfiles);
 els.importProfiles.addEventListener("change", () => { if (els.importProfiles.files[0]) importProfiles(els.importProfiles.files[0]); els.importProfiles.value = ""; });
 

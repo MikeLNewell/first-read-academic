@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="robots" content="noindex,nofollow,noarchive" />
-  <title>First Read Academic | AI-assisted assessment review</title>
+  <title>First Read Academic | Responsible AI-assisted academic feedback</title>
   <meta name="theme-color" content="#082D58" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
@@ -20,12 +20,12 @@
           <div class="brand-words"><span class="brand-first-read">First Read</span><span class="brand-academic">Academic</span></div>
         </div>
         <div class="login-hero-copy">
-          <p class="login-kicker">Higher education · insight · progress</p>
-          <h1>Insight today. Stronger learning tomorrow.</h1>
-          <p>AI-assisted assessment review designed to support academic judgement, clearer feedback and more consistent first-pass scrutiny.</p>
+          <p class="login-kicker">AI-assisted first review for higher education</p>
+          <h1>Grounded in your brief. Designed to support your judgement.</h1>
+          <p>First Read prepares structured, evidence-led draft feedback while keeping academic judgement, approval and responsibility with the lecturer.</p>
         </div>
         <div class="login-principles" aria-label="Product principles">
-          <span>Brief-bound analysis</span><span>Lecturer in the loop</span><span>Built for higher education</span>
+          <span>Human approved</span><span>Assessment bound</span><span>No automated grades</span><span>No AI misconduct detection</span>
         </div>
       </section>
       <div class="login-card">
@@ -44,7 +44,7 @@
           </div>
           <p id="loginError" class="error-text" role="alert"></p>
         </form>
-        <p class="tiny">Student submissions are processed transiently by the application. Assessment profiles are stored separately in the annual library.</p>
+        <p class="tiny">First Read does not persist student submission files in its assessment database. Provider-side processing and retention depend on the configured AI service controls.</p>
       </div>
     </div>
   </div>
@@ -72,7 +72,7 @@
           </button>
           <button class="nav-button" data-screen="privacy">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.7 20 6v5.1c0 5.1-3.25 9.1-8 10.2-4.75-1.1-8-5.1-8-10.2V6l8-3.3Zm0 2L5.6 7.3v3.8c0 4.1 2.47 7.39 6.4 8.5 3.93-1.11 6.4-4.4 6.4-8.5V7.3L12 4.7Zm-.9 3.1h1.8v4.3h-1.8V7.8Zm0 5.8h1.8v1.8h-1.8v-1.8Z"/></svg></span>
-            <span class="nav-label">Privacy & safeguards</span>
+            <span class="nav-label">Responsible AI & privacy</span>
           </button>
         </nav>
       </div>
@@ -109,7 +109,7 @@
           </article>
           <article class="metric-card">
             <div class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9.5 16.2-3.7-3.7 1.3-1.3 2.4 2.4 7.3-7.3 1.3 1.3-8.6 8.6Z"/></svg></div>
-            <div><span>Ready to review</span><strong id="dashboardReadyCount">0</strong><small>Brief + rubric complete</small></div>
+            <div><span>Verified assessments</span><strong id="dashboardReadyCount">0</strong><small>Human-checked and ready</small></div>
           </article>
           <article class="metric-card">
             <div class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v17H4V4h3V2Zm11 8H6v9h12v-9ZM6 6v2h12V6H6Z"/></svg></div>
@@ -152,10 +152,10 @@
               <p class="eyebrow">First Read principles</p>
               <h2>Assist the judgement. Do not automate it.</h2>
               <ul>
-                <li>Brief-bound analysis</li>
-                <li>No automated mark or classification</li>
-                <li>Lecturer review before feedback leaves the workspace</li>
-                <li>Student submissions are not stored by First Read</li>
+                <li>Verified assessment profiles before review</li>
+                <li>No automated mark, classification or misconduct decision</li>
+                <li>Evidence-linked observations with manual-check flags</li>
+                <li>Explicit lecturer approval before feedback can be exported</li>
               </ul>
             </section>
           </aside>
@@ -201,6 +201,11 @@
                 <span class="drop-sub">or click to browse · maximum 4 MB</span>
               </label>
               <div id="fileCard" class="file-card hidden"></div>
+              <div id="identifierNotice" class="identifier-notice hidden" role="status"></div>
+              <label class="preflight-check">
+                <input id="preflightConfirm" type="checkbox" />
+                <span><strong>Privacy and responsibility check</strong>I have checked that the submission contains no unnecessary personal identifiers and understand that First Read produces draft observations for my review, not an academic decision.</span>
+              </label>
             </div>
           </section>
         </div>
@@ -239,17 +244,39 @@
               <h2>First-read report</h2>
             </div>
             <div class="result-actions">
-              <button id="copyFeedback" class="button secondary">Copy student feedback</button>
-              <button id="exportFeedback" class="button secondary">Export text</button>
-              <button id="printFeedback" class="button secondary">Print / PDF</button>
+              <button id="copyFeedback" class="button secondary" disabled>Copy student feedback</button>
+              <button id="exportFeedback" class="button secondary" disabled>Approve & export</button>
+              <button id="printFeedback" class="button secondary" disabled>Print / PDF</button>
             </div>
           </div>
 
           <div class="result-banner">
-            <span>Not a mark.</span> This report is designed to help you inspect evidence and shape feedback. Edit anything before it reaches a student.
+            <span>Human judgement required.</span> First Read has produced a draft interpretation, not a mark, grade, misconduct decision or final academic judgement.
           </div>
 
           <div id="resultsContent"></div>
+
+          <section class="approval-gate panel" aria-labelledby="approvalHeading">
+            <div class="approval-copy">
+              <p class="eyebrow">Human approval gate</p>
+              <h3 id="approvalHeading">The feedback cannot leave First Read until you approve it.</h3>
+              <p>Review the evidence, manual checks and student-facing draft. Editing the generated report after approval will automatically revoke approval.</p>
+            </div>
+            <label class="approval-check">
+              <input id="approvalConfirm" type="checkbox" />
+              <span>I have reviewed this AI-assisted draft against the student's work and the assessment criteria, and I remain responsible for the feedback provided.</span>
+            </label>
+          </section>
+
+          <section class="panel disclosure-panel">
+            <div class="result-section-head">
+              <p class="eyebrow">Transparency</p>
+              <h3>Suggested student disclosure</h3>
+              <p class="section-intro">Use this wording where your institutional policy expects students to be told that AI assisted the preparation of feedback.</p>
+            </div>
+            <textarea id="disclosureText" rows="5" readonly>This feedback was prepared with assistance from First Read Academic, an AI-supported review tool. First Read compared the submitted work with the published assessment criteria and generated draft observations. These observations were reviewed by the lecturer, who remained responsible for the academic judgement and feedback provided. First Read did not determine a mark, grade or academic misconduct outcome.</textarea>
+            <button id="copyDisclosure" class="button secondary" type="button" disabled>Copy disclosure statement</button>
+          </section>
         </section>
       </section>
 
@@ -280,16 +307,77 @@
       </section>
 
       <section id="screen-privacy" class="screen">
-        <header class="page-header compact"><div><p class="eyebrow">Built-in boundaries</p><h2>Privacy & safeguards</h2><p class="lede">Useful automation without pretending academic judgement has been automated.</p></div></header>
-        <div class="safeguard-grid">
-          <article class="safeguard-card"><span>01</span><h3>No automated mark</h3><p>The prompt explicitly prohibits percentages, classifications and pass/fail decisions.</p></article>
-          <article class="safeguard-card"><span>02</span><h3>No AI-authorship claims</h3><p>The system is told not to decide whether generative AI was used or allege misconduct.</p></article>
-          <article class="safeguard-card"><span>03</span><h3>Brief-bound analysis</h3><p>The model is instructed to use only the lecturer-supplied assessment context and evidence in the submission.</p></article>
-          <article class="safeguard-card"><span>04</span><h3>No student-file storage</h3><p>The submission is sent to the serverless review function and is not written to the assessment database or browser storage by this app.</p></article>
-          <article class="safeguard-card"><span>05</span><h3>Persistent briefs only</h3><p>Assessment profiles are stored separately in Supabase so annual briefs and rubrics remain available across devices and redeployments.</p></article>
-          <article class="safeguard-card"><span>06</span><h3>Human approval</h3><p>Every feedback field is editable. Export is a lecturer action, not an automatic release to the student.</p></article>
+        <header class="page-header compact">
+          <div>
+            <p class="eyebrow">Responsible AI by design</p>
+            <h2>What First Read does, and where it deliberately stops.</h2>
+            <p class="lede">The system is designed as decision-support for educators. It prepares a structured first read against a verified assessment profile, then requires meaningful lecturer review before feedback can be exported.</p>
+          </div>
+          <div class="responsible-version">Trust Layer v1.0 · September 2026</div>
+        </header>
+
+        <section class="responsible-commitments">
+          <article><span>01</span><h3>Human approved</h3><p>AI output remains a draft. Copying, exporting and printing are locked until the lecturer explicitly confirms that they have reviewed the feedback.</p></article>
+          <article><span>02</span><h3>Assessment bound</h3><p>Live reviews can only use an assessment profile that a lecturer has checked and explicitly verified. Editing that profile revokes verification.</p></article>
+          <article><span>03</span><h3>No automated grades</h3><p>First Read is instructed not to produce marks, classifications, pass/fail outcomes or other consequential academic decisions.</p></article>
+          <article><span>04</span><h3>No misconduct detection</h3><p>First Read does not decide whether work was produced using AI and does not make academic misconduct allegations.</p></article>
+        </section>
+
+        <div class="responsible-grid">
+          <section class="panel responsible-panel">
+            <p class="eyebrow">What the AI does</p>
+            <h3>Prepares evidence-led observations</h3>
+            <ul class="responsible-list">
+              <li>Compares the submitted work with the verified brief, learning outcomes and rubric.</li>
+              <li>Identifies candidate strengths and development priorities.</li>
+              <li>Links criterion comments to evidence or an identifiable location in the submission where possible.</li>
+              <li>Flags uncertain or externally verifiable issues for lecturer checking rather than presenting them as settled facts.</li>
+              <li>Produces an editable student-facing draft.</li>
+            </ul>
+          </section>
+          <section class="panel responsible-panel">
+            <p class="eyebrow">What the AI does not do</p>
+            <h3>Does not replace academic judgement</h3>
+            <ul class="responsible-list">
+              <li>Does not assign a mark, grade or classification.</li>
+              <li>Does not determine whether academic misconduct occurred.</li>
+              <li>Does not introduce hidden assessment requirements.</li>
+              <li>Does not treat grammar, fluency or presentation as a proxy for academic quality unless the rubric explicitly requires it.</li>
+              <li>Does not automatically send feedback to students.</li>
+            </ul>
+          </section>
         </div>
-        <div class="panel governance-note"><h3>Before live student use</h3><p>Seek confirmation from your institution's data protection / information governance team, complete any required DPIA, and confirm the approved OpenAI API configuration and retention controls. This remains a technical prototype until institutionally approved.</p></div>
+
+        <section class="panel data-flow-panel">
+          <div class="result-section-head">
+            <p class="eyebrow">Data flow</p>
+            <h3>Minimal persistence, clear boundaries</h3>
+          </div>
+          <div class="data-flow-steps">
+            <div><span>1</span><strong>Lecturer chooses file</strong><p>The original file stays local until the review is started.</p></div>
+            <div><span>2</span><strong>Transient processing</strong><p>The file is sent through the authenticated Netlify function. The original filename is replaced before model processing.</p></div>
+            <div><span>3</span><strong>AI service processing</strong><p>The configured OpenAI API processes the submission. Provider-side retention depends on the account and endpoint controls in force.</p></div>
+            <div><span>4</span><strong>No submission database</strong><p>First Read does not write student submission files to the Supabase assessment library.</p></div>
+          </div>
+        </section>
+
+        <div class="responsible-grid">
+          <section class="panel responsible-panel limitation-panel">
+            <p class="eyebrow">Known limitations</p>
+            <h3>Useful output can still be wrong.</h3>
+            <p>Large language models can overlook evidence, misread disciplinary nuance, over-value fluent presentation, infer unsupported conclusions and generate plausible but incorrect observations. Lecturer verification is therefore a core part of the workflow, not a disclaimer.</p>
+          </section>
+          <section class="panel responsible-panel">
+            <p class="eyebrow">Fairness</p>
+            <h3>Separate academic quality from surface style.</h3>
+            <p>The review prompt explicitly directs the model not to penalise language, grammar, writing style or presentation unless those features are part of the published assessment criteria. Users should still monitor outputs for systematic bias.</p>
+          </section>
+        </div>
+
+        <section class="panel governance-note">
+          <h3>Institutional governance still matters</h3>
+          <p>First Read is designed to support responsible implementation, not to determine an institution's lawful basis or assessment policy. Before live use, institutions should consider data protection requirements, any DPIA, approved AI providers, student transparency, contractual/subprocessor arrangements and local assessment regulations.</p>
+        </section>
       </section>
     </main>
   </div>
@@ -324,6 +412,14 @@
       <label>Learning outcomes<textarea id="learningOutcomes" rows="5" placeholder="Paste the learning outcomes assessed by this task."></textarea></label>
       <label>Marking criteria / rubric<textarea id="rubric" rows="9" placeholder="Paste the rubric, criterion descriptors or marking grid here." required></textarea></label>
       <label>Additional lecturer instructions<textarea id="additionalInstructions" rows="5" placeholder="Anything students were told that is not captured above. Avoid introducing hidden requirements."></textarea></label>
+      <section id="verificationPanel" class="verification-panel">
+        <div>
+          <p class="eyebrow">Assessment verification</p>
+          <h3 id="verificationTitle">Save the profile before verification</h3>
+          <p id="verificationCopy">A lecturer must confirm that the extracted brief, learning outcomes and rubric accurately reflect the assessment before this profile can be used for student review.</p>
+        </div>
+        <button type="button" id="verifyProfile" class="button secondary" disabled>Verify assessment profile</button>
+      </section>
       <label class="checkbox-row"><input id="isArchived" type="checkbox" /><span>Archive this profile and hide it from the review selector</span></label>
       <div class="dialog-actions"><button type="button" id="deleteProfile" class="button danger hidden">Delete permanently</button><span></span><button type="button" id="cancelProfile" class="button secondary">Cancel</button><button type="submit" class="button primary">Save profile</button></div>
     </form>

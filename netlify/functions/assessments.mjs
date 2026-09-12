@@ -27,6 +27,8 @@ function toDb(input = {}, { existing = false } = {}) {
     additional_instructions: cleanText(input.additionalInstructions, 12000),
     version: Math.min(99, Math.max(1, Number.parseInt(input.version, 10) || 1)),
     is_archived: Boolean(input.isArchived),
+    is_verified: false,
+    verified_at: null,
     updated_at: new Date().toISOString()
   };
 
@@ -58,6 +60,8 @@ function fromDb(row) {
     additionalInstructions: row.additional_instructions || "",
     version: row.version || 1,
     isArchived: Boolean(row.is_archived),
+    isVerified: Boolean(row.is_verified),
+    verifiedAt: row.verified_at || null,
     sourceProfileId: row.source_profile_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -90,7 +94,35 @@ export async function handler(event) {
 
     if (event.httpMethod === "PATCH") {
       const id = event.queryStringParameters?.id || "";
+      const action = event.queryStringParameters?.action || "";
       if (!UUID_RE.test(id)) return json(400, { error: "Invalid assessment profile id." });
+
+      if (action === "verify") {
+        const current = await supabaseRequest(`/rest/v1/assessment_profiles?id=eq.${encodeURIComponent(id)}&select=*`);
+        if (!current?.length) return json(404, { error: "Assessment profile not found." });
+        const profile = fromDb(current[0]);
+        if (profile.assessmentBrief.trim().length < 40 || profile.rubric.trim().length < 20) {
+          return json(400, { error: "Complete the assessment brief and marking criteria before verification." });
+        }
+        const updated = await supabaseRequest(`/rest/v1/assessment_profiles?id=eq.${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: { is_verified: true, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+          prefer: "return=representation"
+        });
+        return json(200, { profile: fromDb(updated[0]) });
+      }
+
+      if (action === "status") {
+        const input = JSON.parse(event.body || "{}");
+        const updated = await supabaseRequest(`/rest/v1/assessment_profiles?id=eq.${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: { is_archived: Boolean(input.isArchived), updated_at: new Date().toISOString() },
+          prefer: "return=representation"
+        });
+        if (!updated?.length) return json(404, { error: "Assessment profile not found." });
+        return json(200, { profile: fromDb(updated[0]) });
+      }
+
       const input = JSON.parse(event.body || "{}");
       const row = toDb(input, { existing: true });
       const updated = await supabaseRequest(`/rest/v1/assessment_profiles?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: row, prefer: "return=representation" });

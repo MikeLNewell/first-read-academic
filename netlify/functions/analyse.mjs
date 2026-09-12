@@ -1,8 +1,10 @@
 import OpenAI from "openai";
 import { isAuthenticated, json } from "./_auth.mjs";
+import { supabaseRequest } from "./_supabase.mjs";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "txt"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REVIEW_LEVEL_CONFIG = {
   quick: {
     model: "gpt-5.6-luna",
@@ -44,10 +46,12 @@ const feedbackSchema = {
           criterion: { type: "string" },
           judgement: { type: "string", enum: ["Strong", "Secure", "Developing", "Limited", "Not evidenced", "Manual review"] },
           evidence: { type: "string" },
+          evidence_location: { type: "string" },
+          verification_status: { type: "string", enum: ["Supported", "Check manually", "Not evidenced"] },
           feedback: { type: "string" },
           priority: { type: "string", enum: ["High", "Medium", "Low"] }
         },
-        required: ["criterion", "judgement", "evidence", "feedback", "priority"]
+        required: ["criterion", "judgement", "evidence", "evidence_location", "verification_status", "feedback", "priority"]
       }
     },
     strengths: { type: "array", items: { type: "string" } },
@@ -108,6 +112,26 @@ function compactAssessment(a = {}) {
   };
 }
 
+function assessmentFromDb(row = {}) {
+  return {
+    id: row.id,
+    academicYear: row.academic_year,
+    version: row.version || 1,
+    unitCode: row.unit_code,
+    unitName: row.unit_name,
+    assessmentName: row.assessment_name,
+    academicLevel: row.academic_level || "",
+    wordCount: row.word_count || "",
+    assessmentBrief: row.assessment_brief || "",
+    learningOutcomes: row.learning_outcomes || "",
+    rubric: row.rubric || "",
+    additionalInstructions: row.additional_instructions || "",
+    feedbackStyle: row.feedback_style || "",
+    isVerified: Boolean(row.is_verified),
+    verifiedAt: row.verified_at || null
+  };
+}
+
 export async function handler(event) {
   if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
   if (!isAuthenticated(event)) return json(401, { error: "Your session has expired. Please sign in again." });
@@ -131,7 +155,24 @@ export async function handler(event) {
   const estimatedBytes = Math.floor((fileBase64.length * 3) / 4);
   if (estimatedBytes > MAX_FILE_BYTES) return json(413, { error: "File is too large for this MVP. Please keep submissions below 4 MB." });
 
-  const profile = compactAssessment(assessment);
+  const assessmentId = String(assessment?.id || "");
+  if (!UUID_RE.test(assessmentId)) return json(400, { error: "A saved assessment profile is required for live review." });
+
+  let storedRows;
+  try {
+    storedRows = await supabaseRequest(`/rest/v1/assessment_profiles?id=eq.${encodeURIComponent(assessmentId)}&select=*`);
+  } catch (error) {
+    console.error("Verified assessment lookup failed", error);
+    return json(503, { error: "The verified assessment profile could not be checked against the assessment library." });
+  }
+  if (!storedRows?.length) return json(404, { error: "The selected assessment profile was not found." });
+
+  const storedAssessment = assessmentFromDb(storedRows[0]);
+  if (!storedAssessment.isVerified) {
+    return json(400, { error: "This assessment profile has not been verified by a lecturer. Verify it in the Assessment Library before reviewing student work." });
+  }
+
+  const profile = compactAssessment(storedAssessment);
   if (profile.assessmentBrief.trim().length < 40 || profile.rubric.trim().length < 20) {
     return json(400, { error: "Complete the assessment brief and marking criteria before reviewing a submission." });
   }
@@ -157,6 +198,10 @@ NON-NEGOTIABLE RULES:
 8. Be constructive, specific and developmental. Use clear UK English suitable for the stated academic level.
 9. Where evidence is uncertain, contradictory, missing, or requires checking against an external source, flag it for lecturer manual review instead of asserting it as fact.
 10. The lecturer remains the decision-maker. Frame this as draft feedback for lecturer review.
+11. Do not treat grammar, fluency, accent, writing style or presentation polish as a proxy for academic quality unless the supplied rubric explicitly assesses those features.
+12. Do not infer protected characteristics, disability, language background or personal circumstances from the writing.
+13. For each criterion, identify where the supporting evidence appears using a page, section, heading or other useful location when this can be established. If no reliable location can be established, say so.
+14. Use verification_status = "Supported" only when the observation is clearly grounded in the submission. Use "Check manually" where the evidence is ambiguous or requires external verification, and "Not evidenced" where the criterion is genuinely absent.
 
 For each criterion, explain what evidence is present, what is working, and the most useful next improvement. Prioritise substantive academic issues over cosmetic proofreading.
 
@@ -213,7 +258,11 @@ ${reviewConfig.guidance}
         reasoningEffort: reviewConfig.reasoning,
         startedAt: new Date().toISOString(),
         storedByApp: false,
-        processingMode: "background"
+        processingMode: "background",
+        assessmentProfileId: storedAssessment.id,
+        assessmentVersion: storedAssessment.version,
+        assessmentVerifiedAt: storedAssessment.verifiedAt,
+        reviewEngine: "First Read Trust Layer v1.0"
       }
     });
   } catch (error) {

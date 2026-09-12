@@ -4,26 +4,48 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="robots" content="noindex,nofollow,noarchive" />
-  <title>First Read | Academic feedback assistant</title>
+  <title>First Read Academic | AI-assisted assessment review</title>
+  <meta name="theme-color" content="#082D58" />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="brand.css" />
   <script src="app.js" defer></script>
 </head>
 <body>
   <div id="loginGate" class="login-gate">
-    <div class="login-card">
-      <div class="brand-mark" aria-hidden="true">FR</div>
-      <p class="eyebrow">Private academic workspace</p>
-      <h1>First Read</h1>
-      <p class="login-copy">AI-assisted initial feedback, with the lecturer firmly in the loop.</p>
-      <form id="loginForm">
-        <label for="password">Workspace password</label>
-        <div class="password-row">
-          <input id="password" name="password" type="password" autocomplete="current-password" required />
-          <button class="button primary" type="submit">Enter</button>
+    <div class="login-shell">
+      <section class="login-brand-panel" aria-label="First Read Academic">
+        <div class="brand-lockup">
+          <img class="brand-symbol" src="assets/first-read-mark.svg" alt="" aria-hidden="true" />
+          <div class="brand-words"><span class="brand-first-read">First Read</span><span class="brand-academic">Academic</span></div>
         </div>
-        <p id="loginError" class="error-text" role="alert"></p>
-      </form>
-      <p class="tiny">Student submissions are not saved by this application. Assessment profiles can be held securely in the annual library once Supabase is configured.</p>
+        <div class="login-hero-copy">
+          <p class="login-kicker">Higher education · insight · progress</p>
+          <h1>Insight today. Stronger learning tomorrow.</h1>
+          <p>AI-assisted assessment review designed to support academic judgement, clearer feedback and more consistent first-pass scrutiny.</p>
+        </div>
+        <div class="login-principles" aria-label="Product principles">
+          <span>Brief-bound analysis</span><span>Lecturer in the loop</span><span>Built for higher education</span>
+        </div>
+      </section>
+      <div class="login-card">
+        <div class="brand-lockup mobile-brand-lockup">
+          <img class="brand-symbol" src="assets/first-read-mark.svg" alt="" aria-hidden="true" />
+          <div class="brand-words"><span class="brand-first-read">First Read</span><span class="brand-academic">Academic</span></div>
+        </div>
+        <p class="eyebrow">Private academic workspace</p>
+        <h2>Welcome back</h2>
+        <p class="login-copy">Sign in to review submissions, manage annual assessment briefs and prepare evidence-led draft feedback.</p>
+        <form id="loginForm">
+          <label for="password">Workspace password</label>
+          <div class="password-row">
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+            <button class="button primary" type="submit">Enter workspace</button>
+          </div>
+          <p id="loginError" class="error-text" role="alert"></p>
+        </form>
+        <p class="tiny">Student submissions are processed transiently by the application. Assessment profiles are stored separately in the annual library.</p>
+      </div>
     </div>
   </div>
 
@@ -31,8 +53,8 @@
     <aside class="sidebar">
       <div>
         <div class="brand-row">
-          <div class="brand-mark small" aria-hidden="true">FR</div>
-          <div><span class="product-name">First Read</span><span class="product-sub">Academic review workspace</span></div>
+          <img class="brand-symbol" src="assets/first-read-mark.svg" alt="" aria-hidden="true" />
+          <div><span class="product-name">First Read</span><span class="product-sub">Academic</span></div>
         </div>
 
         <nav class="nav" aria-label="Main navigation">

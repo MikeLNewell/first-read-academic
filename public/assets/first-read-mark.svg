@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 112" role="img" aria-labelledby="title">
+  <title id="title">First Read Academic mark</title>
+  <defs>
+    <linearGradient id="g1" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#16A6A3"/>
+      <stop offset="1" stop-color="#8DE0C2"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0B7E8C"/>
+      <stop offset="1" stop-color="#27C3AA"/>
+    </linearGradient>
+  </defs>
+  <path d="M20 102C17 72 27 46 51 28C64 18 78 12 89 7C87 29 79 48 64 62C50 75 34 86 20 102Z" fill="url(#g1)"/>
+  <path d="M18 83C16 60 24 42 41 29C51 21 61 17 70 13C68 30 62 44 51 55C40 66 28 74 18 83Z" fill="#F6FBFA" opacity=".96"/>
+  <path d="M29 104C30 84 38 67 54 56C64 49 74 45 83 42C80 58 73 71 62 81C52 90 40 97 29 104Z" fill="url(#g2)"/>
+</svg>

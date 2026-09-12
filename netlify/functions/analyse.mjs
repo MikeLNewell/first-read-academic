@@ -3,6 +3,32 @@ import { isAuthenticated, json } from "./_auth.mjs";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "txt"]);
+const REVIEW_LEVEL_CONFIG = {
+  quick: {
+    model: "gpt-5.6-luna",
+    reasoning: "low",
+    verbosity: "low",
+    maxOutputTokens: 5000,
+    guidance: `QUICK REVIEW MODE:
+Provide a concise first-pass review. Focus on whether the submission addresses the brief, the clearest strengths, obvious gaps, and the 1-3 highest-value improvements. Keep criterion comments brief and practical. Keep the overall summary to roughly 120 words and the student-facing feedback to roughly 200-350 words. Flag only manual checks that materially affect academic judgement.`
+  },
+  standard: {
+    model: "gpt-5.6-luna",
+    reasoning: "medium",
+    verbosity: "medium",
+    maxOutputTokens: 8000,
+    guidance: `STANDARD REVIEW MODE:
+Provide a full criterion-by-criterion review with clear evidence, balanced strengths and weaknesses, and 3-5 prioritised developmental actions. Consider academic argument, use of evidence, critical analysis, structure and methodological/statistical interpretation where relevant to the supplied criteria. Keep the student-facing feedback focused and usable, roughly 350-600 words.`
+  },
+  deep: {
+    model: "gpt-5.6-terra",
+    reasoning: "high",
+    verbosity: "medium",
+    maxOutputTokens: 12000,
+    guidance: `DEEP REVIEW MODE:
+Undertake close academic scrutiny while remaining strictly within the supplied brief and rubric. Examine criterion alignment, coherence of argument, integration and appropriateness of evidence, methodological logic, statistical interpretation where relevant, internal contradictions, unsupported claims, limitations, and the relationship between results and conclusions. Distinguish clearly between evidence in the script and issues requiring lecturer verification. Provide 4-6 prioritised developmental actions and a detailed but concise student-facing draft, roughly 500-800 words.`
+  }
+};
 
 const feedbackSchema = {
   type: "object",
@@ -94,8 +120,10 @@ export async function handler(event) {
     return json(400, { error: "Invalid request body." });
   }
 
-  const { fileName, fileBase64, assessment } = body;
+  const { fileName, fileBase64, assessment, reviewLevel = "quick" } = body;
   if (!fileName || !fileBase64 || !assessment) return json(400, { error: "Submission and assessment profile are required." });
+
+  const reviewConfig = REVIEW_LEVEL_CONFIG[reviewLevel] || REVIEW_LEVEL_CONFIG.quick;
 
   const ext = extension(fileName);
   if (!ALLOWED_EXTENSIONS.has(ext)) return json(400, { error: "Please upload a PDF, DOCX or TXT file." });
@@ -131,19 +159,21 @@ NON-NEGOTIABLE RULES:
 10. The lecturer remains the decision-maker. Frame this as draft feedback for lecturer review.
 
 For each criterion, explain what evidence is present, what is working, and the most useful next improvement. Prioritise substantive academic issues over cosmetic proofreading.
+
+${reviewConfig.guidance}
 `.trim();
 
   const assessmentText = `LECTURER-SUPPLIED ASSESSMENT PROFILE\n${JSON.stringify(profile, null, 2)}\n\nTASK\nReview the attached student submission against this profile. Produce a structured first-review report. The final student_feedback field should be a concise, constructive feedback draft that can be edited by the lecturer before release.`;
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = process.env.OPENAI_MODEL || "gpt-5.6-terra";
+    const model = reviewConfig.model;
 
     const response = await client.responses.create({
       model,
       store: false,
       background: true,
-      reasoning: { effort: "medium" },
+      reasoning: { effort: reviewConfig.reasoning },
       input: [
         { role: "developer", content: developerInstructions },
         {
@@ -159,7 +189,7 @@ For each criterion, explain what evidence is present, what is working, and the m
         }
       ],
       text: {
-        verbosity: "medium",
+        verbosity: reviewConfig.verbosity,
         format: {
           type: "json_schema",
           name: "academic_feedback",
@@ -167,7 +197,7 @@ For each criterion, explain what evidence is present, what is working, and the m
           schema: feedbackSchema
         }
       },
-      max_output_tokens: 12000
+      max_output_tokens: reviewConfig.maxOutputTokens
     });
 
     if (!response?.id) {
@@ -179,6 +209,8 @@ For each criterion, explain what evidence is present, what is working, and the m
       responseId: response.id,
       meta: {
         model,
+        reviewLevel: Object.prototype.hasOwnProperty.call(REVIEW_LEVEL_CONFIG, reviewLevel) ? reviewLevel : "quick",
+        reasoningEffort: reviewConfig.reasoning,
         startedAt: new Date().toISOString(),
         storedByApp: false,
         processingMode: "background"

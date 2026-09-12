@@ -87,7 +87,15 @@ textarea { resize: vertical; line-height: 1.5; }
 
 .run-strip { margin: 18px 0; border-radius: 16px; background: #1b2924; color: white; display: flex; justify-content: space-between; align-items: center; gap: 22px; padding: 20px 22px; }
 .run-title { margin: 0 0 4px; font-weight: 700; }
-.run-strip p:last-child { margin: 0; color: rgba(255,255,255,.62); font-size: .8rem; }
+#runHint { margin: 0; color: rgba(255,255,255,.62); font-size: .8rem; }
+.run-copy { min-width: 0; flex: 1; }
+.review-level-group { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 7px; margin-top: 14px; max-width: 720px; }
+.review-level-option { border: 1px solid rgba(255,255,255,.16); border-radius: 11px; background: rgba(255,255,255,.055); color: rgba(255,255,255,.82); padding: 10px 11px; text-align: left; transition: .16s ease; }
+.review-level-option:hover { border-color: rgba(217,242,92,.55); background: rgba(255,255,255,.09); }
+.review-level-option.active { border-color: var(--lime); background: rgba(217,242,92,.12); box-shadow: inset 0 0 0 1px rgba(217,242,92,.18); }
+.review-level-name { display: block; color: white; font-size: .78rem; font-weight: 760; margin-bottom: 3px; }
+.review-level-option.active .review-level-name { color: var(--lime); }
+.review-level-detail { display: block; color: rgba(255,255,255,.56); font-size: .66rem; line-height: 1.35; font-weight: 500; }
 .button { border: 1px solid transparent; border-radius: 11px; padding: 10px 14px; font-weight: 700; font-size: .8rem; transition: .18s ease; }
 .button:hover { transform: translateY(-1px); }
 .button.primary { background: var(--lime); color: #173e34; border-color: #c5df47; }
@@ -193,6 +201,7 @@ textarea { resize: vertical; line-height: 1.5; }
   .sidebar-bottom { display: none; }
   .main { padding: 26px 16px 60px; }
   .page-header, .results-header, .run-strip { align-items: stretch; flex-direction: column; }
+  .review-level-group { grid-template-columns: 1fr; max-width: none; }
   .privacy-chip { align-self: flex-start; }
   .step-panel { grid-template-columns: 1fr; }
   .step-number { width: 30px; height: 30px; }

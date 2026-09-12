@@ -93,9 +93,23 @@
         </div>
 
         <section class="run-strip">
-          <div>
+          <div class="run-copy">
             <p class="run-title">Ready for a first read?</p>
             <p id="runHint">Select an assessment profile and add a submission.</p>
+            <div id="reviewLevelGroup" class="review-level-group" role="radiogroup" aria-label="Review depth">
+              <button type="button" class="review-level-option active" data-review-level="quick" role="radio" aria-checked="true">
+                <span class="review-level-name">Quick</span>
+                <span class="review-level-detail">Lowest cost · focused first pass</span>
+              </button>
+              <button type="button" class="review-level-option" data-review-level="standard" role="radio" aria-checked="false">
+                <span class="review-level-name">Standard</span>
+                <span class="review-level-detail">Balanced · fuller criterion review</span>
+              </button>
+              <button type="button" class="review-level-option" data-review-level="deep" role="radio" aria-checked="false">
+                <span class="review-level-name">Deep</span>
+                <span class="review-level-detail">Higher cost · detailed scrutiny</span>
+              </button>
+            </div>
           </div>
           <button id="analyseButton" class="button primary large" disabled>Generate draft review</button>
         </section>

@@ -1,6 +1,8 @@
 const LEGACY_STORAGE_KEY = "firstReadAssessmentProfilesV1";
 const SELECTION_KEY = "firstReadSelectionV2";
 const MIGRATION_KEY = "firstReadLegacyMigrationV2";
+const REVIEW_LEVEL_KEY = "firstReadReviewLevelV1";
+const REVIEW_LEVELS = new Set(["quick", "standard", "deep"]);
 
 const state = {
   profiles: [],
@@ -12,7 +14,8 @@ const state = {
   libraryStatus: "active",
   file: null,
   review: null,
-  meta: null
+  meta: null,
+  reviewLevel: "quick"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +28,7 @@ const els = {
   dialogTitle: $("dialogTitle"), closeDialog: $("closeDialog"), cancelProfile: $("cancelProfile"), deleteProfile: $("deleteProfile"),
   assessmentBriefFile: $("assessmentBriefFile"), briefImportStatus: $("briefImportStatus"),
   submissionFile: $("submissionFile"), dropZone: $("dropZone"), fileCard: $("fileCard"), analyseButton: $("analyseButton"), runHint: $("runHint"),
+  reviewLevelGroup: $("reviewLevelGroup"),
   progressPanel: $("progressPanel"), progressText: $("progressText"), resultsSection: $("resultsSection"), resultsContent: $("resultsContent"),
   copyFeedback: $("copyFeedback"), exportFeedback: $("exportFeedback"), printFeedback: $("printFeedback"),
   exportProfiles: $("exportProfiles"), importProfiles: $("importProfiles"), toast: $("toast")
@@ -418,6 +422,28 @@ async function migrateLegacy() {
   finally { els.migrateLegacyProfiles.disabled = false; }
 }
 
+function loadReviewLevel() {
+  const saved = localStorage.getItem(REVIEW_LEVEL_KEY);
+  state.reviewLevel = REVIEW_LEVELS.has(saved) ? saved : "quick";
+  renderReviewLevel();
+}
+
+function setReviewLevel(level) {
+  if (!REVIEW_LEVELS.has(level)) return;
+  state.reviewLevel = level;
+  localStorage.setItem(REVIEW_LEVEL_KEY, level);
+  renderReviewLevel();
+}
+
+function renderReviewLevel() {
+  if (!els.reviewLevelGroup) return;
+  els.reviewLevelGroup.querySelectorAll("[data-review-level]").forEach((button) => {
+    const active = button.dataset.reviewLevel === state.reviewLevel;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", active ? "true" : "false");
+  });
+}
+
 function setFile(file) {
   if (!file) return;
   const ext = file.name.toLowerCase().split(".").pop();
@@ -496,17 +522,19 @@ async function runAnalysis() {
       body: JSON.stringify({
         fileName: state.file.name,
         fileBase64,
-        assessment: p
+        assessment: p,
+        reviewLevel: state.reviewLevel
       })
     });
 
     if (!started.responseId) throw new Error("The review could not be started.");
 
-    els.progressText.textContent = "Review started. Reading the submission and checking the assessment criteria…";
+    const levelName = state.reviewLevel.charAt(0).toUpperCase() + state.reviewLevel.slice(1);
+    els.progressText.textContent = `${levelName} review started. Reading the submission and checking the assessment criteria…`;
     const completed = await pollReview(started.responseId);
 
     state.review = completed.result;
-    state.meta = completed.meta;
+    state.meta = { ...(started.meta || {}), ...(completed.meta || {}), reviewLevel: started.meta?.reviewLevel || state.reviewLevel };
     renderResults();
     els.resultsSection.classList.remove("hidden");
     els.resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -626,6 +654,12 @@ els.submissionFile.addEventListener("change", () => setFile(els.submissionFile.f
 ["dragenter","dragover"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.add("dragover"); }));
 ["dragleave","drop"].forEach((name) => els.dropZone.addEventListener(name, (e) => { e.preventDefault(); els.dropZone.classList.remove("dragover"); }));
 els.dropZone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+if (els.reviewLevelGroup) {
+  els.reviewLevelGroup.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-review-level]");
+    if (button) setReviewLevel(button.dataset.reviewLevel);
+  });
+}
 els.analyseButton.addEventListener("click", runAnalysis);
 els.copyFeedback.addEventListener("click", async () => { if (!state.review) return; await navigator.clipboard.writeText(state.review.student_feedback || ""); showToast("Student feedback copied"); });
 els.exportFeedback.addEventListener("click", () => { if (!state.review) return; const p = selectedProfile(); downloadText(`${p?.unitCode || "assessment"}-${(p?.academicYear || "").replace("/", "-")}-first-read-feedback.txt`, compiledFeedback()); });
@@ -633,6 +667,7 @@ els.printFeedback.addEventListener("click", () => window.print());
 els.exportProfiles.addEventListener("click", exportProfiles);
 els.importProfiles.addEventListener("change", () => { if (els.importProfiles.files[0]) importProfiles(els.importProfiles.files[0]); els.importProfiles.value = ""; });
 
+loadReviewLevel();
 loadSavedSelection();
 renderAllProfileViews();
 checkSession();

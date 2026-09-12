@@ -803,3 +803,73 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .data-flow-steps { grid-template-columns: 1fr; }
   .review-audit-strip { grid-template-columns: 1fr; }
 }
+
+
+/* Responsible AI page formatting refinement */
+.responsible-panel,
+.data-flow-panel,
+.governance-note {
+  padding: 24px 26px;
+  box-sizing: border-box;
+}
+
+.responsible-panel {
+  min-width: 0;
+}
+
+.responsible-panel .eyebrow,
+.data-flow-panel .eyebrow {
+  margin: 0 0 8px;
+}
+
+.responsible-panel h3,
+.data-flow-panel h3 {
+  margin-top: 0;
+}
+
+.responsible-list {
+  padding-bottom: 2px;
+}
+
+.responsible-list li {
+  min-width: 0;
+}
+
+.data-flow-panel .result-section-head {
+  margin-bottom: 18px;
+}
+
+.data-flow-steps {
+  align-items: stretch;
+}
+
+.data-flow-steps > div {
+  display: flex;
+  flex-direction: column;
+  min-height: 190px;
+  padding: 20px;
+}
+
+.data-flow-steps p {
+  margin-top: 8px;
+}
+
+.limitation-panel {
+  padding-left: 24px;
+}
+
+.governance-note h3 {
+  margin-top: 0;
+}
+
+@media (max-width: 760px) {
+  .responsible-panel,
+  .data-flow-panel,
+  .governance-note {
+    padding: 20px;
+  }
+
+  .data-flow-steps > div {
+    min-height: 0;
+  }
+}
